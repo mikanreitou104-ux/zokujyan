@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Document</title>
+  <link rel="stylesheet" href="main.css" />
+</head>
+<body>
+
+  <!-- audio -->
+  <audio id="se-click" src="sounds/se/mode-click.mp3"></audio>
+  <audio id="se-hover" src="sounds/se/hover.mp3"></audio>
+  <audio id="se-cancel" src="sounds/se/cancel.mp3"></audio>
+  <audio id="se-HoverCard" src="./sounds/se/cardhover.mp3"></audio>
+  <audio id="bgm-title" src="sounds/bgm/title.mp3" loop></audio>
+  <audio id="bgm-mode" src="sounds/bgm/mode.mp3" loop></audio>
+  <audio id="bgm-cpu-battle" src="sounds/bgm/cpu-battle.mp3" loop></audio>
+  <audio id="se-card-fly" src="./sounds/se/card_fly.mp3"></audio>
+  <audio id="se-damage" src="./sounds/se/damage.mp3"></audio>
+  <audio id="se-gekiha" src="./sounds/se/gekiha.mp3"></audio>
+  <!-- TODO: 10以上ダメージ着弾時の「どごーん」SE。音声ファイルが用意でき次第このsrcを差し替える -->
+  <audio id="se-big-impact" src="./sounds/se/big_impact.mp3"></audio>
+
+  <!-- 縦向き画面のときにゲーム全体を覆って回転を促すオーバーレイ。
+       #game-canvas(拡縮対象)の外に置き、実デバイス画面全体を確実に覆えるようにする -->
+  <div id="rotate-overlay" class="rotate-overlay">
+    <div class="rotate-overlay-icon">📱</div>
+    <p class="rotate-overlay-text">画面を横向きにしてください</p>
+  </div>
+
+  <!-- ここから#game-canvasで固定解像度(1920x1080)にまとめ、JSで実ウィンドウに合わせて拡縮する -->
+  <div id="game-canvas">
+
+  <!-- タイトル画面 -->
+  <section id="screen-title" class="screen active">
+
+    <div class="title-content">
+    <div class="title-blak title-blak-top"></div>
+    <div class="title-blak title-blak-bottom"></div>
+      <h1 class="game-title">
+        <img src="images/ui/logo.png" class="title-img" alt="logo">
+      </h1>
+      <p class="start-text">タッチしてスタート</p>
+    </div>
+  </section>
+  <!-- end-title-screen -->
+
+  <!-- モード選択画面 -->
+  <section id="screen-mode" class="screen">
+    <!-- 実レイアウトは #screen-mode ではなくこの内側の .mode-hub に持たせる。
+         showScreen() が #screen-mode に style.display="block" を直接上書きするため
+         （#screen-attr-confirm と同じ回避策）。 -->
+    <div class="mode-hub">
+
+      <!-- 左上：プロフィール(アイコン＋名前)。クリックでプロフィール画面を開く -->
+      <button id="modeProfileChip" class="mode-profile-chip">
+        <div id="modeProfileIconWrap" class="profile-icon">
+          <img id="modeProfileIconImg" class="profile-icon-img" src="" alt="icon">
+        </div>
+        <span id="modeProfileName" class="profile-chip-name">ユーザー</span>
+      </button>
+
+      <!-- 上部リソースバー：右寄せで通貨類を集約。今後カウンターを追加する場合は
+           .mode-resource-chip を持つ要素をこの中に追加していくだけでよい。 -->
+      <div class="mode-topbar">
+        <div class="mode-resource-chip mode-coins-display">
+          <span class="resource-icon">🪙</span>所持コイン：<span id="modeCoinsValue" class="coins-value-display">0</span>
+        </div>
+        <!-- TODO: ジェム等、新しいリソースを追加する場合は
+             .mode-resource-chip を持つ div をここに追加するだけでよい -->
+      </div>
+
+      <div class="mode-main">
+        <!-- 左：キャラクターパネル（プレースホルダー）
+             TODO: 専用キャラクター立ち絵ができたら #modeCharacterArt の src を差し替える。
+             今は他の素材（ロゴ）で代用。 -->
+        <div class="mode-character-panel">
+          <div class="mode-character-glow"></div>
+          <img id="modeCharacterArt" class="mode-character-art" src="images/ui/logo.png" alt="キャラクター">
+        </div>
+
+        <!-- 右：モードタイルグリッド（.mode-row は廃止。グリッドの自然な折り返しで代替） -->
+        <div class="mode-grid">
+          <button class="mode-btn story tile-wide" data-mode="story">ストーリー</button>
+          <button id="btn-mode-online" class="mode-btn online tile-wide" data-mode="online">オンライン</button>
+          <button class="mode-btn shop tile" data-mode="shop">ショップ</button>
+          <button class="mode-btn quest tile" data-mode="quest">クエスト<span id="questClaimableBadge" class="quest-badge" style="display:none;"></span></button>
+          <button id="btn-mode-cpu" class="mode-btn cpu tile" data-mode="cpu">CPU</button>
+          <button class="mode-btn mymenu tile" data-mode="mymenu">MYメニュー</button>
+          <!-- TODO: 新モードを追加する場合は
+               <button class="mode-btn <色クラス> tile" data-mode="...">
+               をここに追加するだけでグリッドに収まる -->
+        </div>
+      </div>
+
+    </div>
+
+    <div id="mode-description"></div>
+    <div class="bg-effect"></div>
+  </section>
+
+  <!-- MYメニュー -->
+  <section id="screen-mymenu" class="screen">
+    <h1 class="mymenu-title">MYメニュー</h1>
+    <button id="btn-back-to-mode" class="mymenu-back-btn">← 戻る</button>
+
+    <!-- タブ切り替え：一度に1つのパネルだけ表示する -->
+    <div class="mymenu-tab-nav">
+      <button class="mymenu-tab-btn active" data-tab-target="equip-tab">カードスキン</button>
+      <button class="mymenu-tab-btn" data-tab-target="icon-tab">アイコン</button>
+      <button class="mymenu-tab-btn" data-tab-target="settings-tab">設定</button>
+    </div>
+
+    <div id="equip-tab" class="settings-tab mymenu-tab-panel active">
+      <h2>カードスキン</h2>
+      <div id="mymenu-skin-list" class="skin-list"></div>
+    </div>
+
+    <div id="icon-tab" class="settings-tab mymenu-tab-panel">
+      <h2>アイコン</h2>
+
+      <div class="icon-tab-layout">
+        <!-- 左：装備中のアイコン画像＋アイコン背景を組み合わせたプレビュー（スクロールしても位置固定） -->
+        <div class="icon-preview-col">
+          <div id="mymenuIconPreview" class="icon-preview">
+            <img id="mymenuIconPreviewImg" class="icon-preview-img" src="" alt="プレビュー">
+          </div>
+        </div>
+
+        <!-- 右：アイコン画像・背景の選択リスト -->
+        <div class="icon-list-col">
+          <h3>アイコン画像</h3>
+          <div id="mymenu-icon-list" class="skin-list"></div>
+
+          <h3>アイコン背景</h3>
+          <div id="mymenu-iconbg-list" class="skin-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings-tab" class="settings-tab mymenu-tab-panel">
+      <h2>設定</h2>
+      <div class="volume-control">
+        <label>BGM 音量</label>
+        <input type="range" id="bgm-volume" min="0" max="1" step="0.01" value="0.6">
+      </div>
+      <div class="volume-control">
+        <label>SE 音量</label>
+        <input type="range" id="se-volume" min="0" max="1" step="0.01" value="1">
+      </div>
+
+      <div class="volume-control">
+        <label>じゃんけんカードの出し方</label>
+        <div class="hand-input-mode-toggle">
+          <button type="button" class="hand-input-mode-btn active" data-mode="click">クリック</button>
+          <button type="button" class="hand-input-mode-btn" data-mode="dragdrop">ドラッグ＆ドロップ</button>
+        </div>
+      </div>
+
+      <div class="volume-control">
+        <label>データ管理</label>
+        <button id="btn-reset-coins-quests" class="secondary-btn">コイン・クエストをリセット</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ショップ -->
+  <section id="screen-shop" class="screen">
+    <h1 class="mymenu-title">ショップ</h1>
+    <button id="btn-shop-back" class="mymenu-back-btn">← 戻る</button>
+
+    <div class="coins-display">所持コイン：<span id="shopCoinsValue">0</span></div>
+
+    <div class="settings-tab">
+      <h2>カードスキン</h2>
+      <div id="shop-skin-list" class="skin-list"></div>
+    </div>
+
+    <div class="settings-tab">
+      <h2>アイコン画像</h2>
+      <div id="shop-icon-list" class="skin-list"></div>
+    </div>
+
+    <div class="settings-tab">
+      <h2>アイコン背景</h2>
+      <div id="shop-iconbg-list" class="skin-list"></div>
+    </div>
+  </section>
+
+  <!-- クエスト -->
+  <section id="screen-quest" class="screen">
+    <h1 class="mymenu-title">クエスト</h1>
+    <button id="btn-quest-back" class="mymenu-back-btn">← 戻る</button>
+
+    <div class="mode-topbar">
+      <div class="mode-resource-chip mode-coins-display">
+        <span class="resource-icon">🪙</span>所持コイン：<span class="coins-value-display">0</span>
+      </div>
+    </div>
+
+    <div class="quest-layout">
+      <div id="quest-tab-nav" class="quest-tab-nav"></div>
+      <div class="quest-content-area">
+        <div id="quest-list" class="quest-list"></div>
+        <button id="quest-claim-all-btn" class="primary-btn quest-claim-all-btn">
+          まとめて受け取る
+          <span id="questClaimAllBadge" class="quest-claim-all-badge" style="display:none;"></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- プロフィール -->
+  <section id="screen-profile" class="screen">
+    <h1 class="mymenu-title">プロフィール</h1>
+    <button id="btn-profile-back" class="mymenu-back-btn">← 戻る</button>
+
+    <div class="settings-tab profile-panel">
+      <div class="profile-header">
+        <div id="profileIconWrap" class="profile-icon profile-icon-large">
+          <img id="profileIconImg" class="profile-icon-img" src="" alt="icon">
+        </div>
+        <div class="profile-header-info">
+          <div id="profileNameDisplay" class="profile-name-large">ユーザー</div>
+          <button id="btn-profile-edit-name" class="secondary-btn">名前を変更</button>
+        </div>
+      </div>
+
+      <div class="profile-section">
+        <h3>ストーリークリア状況</h3>
+        <p id="profileStoryClear"></p>
+      </div>
+
+      <div class="profile-section">
+        <h3>オンライン</h3>
+        <div id="profileHandStats" class="profile-hand-stats"></div>
+        <p>じゃんけんの勝率：<span id="profileOverallWinRate"></span></p>
+      </div>
+
+      <div class="profile-section">
+        <h3>クリアしたミッション数</h3>
+        <p id="profileQuestClear"></p>
+      </div>
+
+      <div class="profile-section">
+        <h3>獲得した属性数</h3>
+        <p id="profileAttrCount"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- オンライン対戦：ルーム作成/参加 -->
+  <section id="screen-online-lobby" class="screen">
+    <h1 class="mymenu-title">オンライン対戦</h1>
+    <button id="btn-online-lobby-back" class="mymenu-back-btn">← 戻る</button>
+
+    <div class="settings-tab online-lobby-panel">
+      <div class="online-lobby-block">
+        <h3>ルームを作成する</h3>
+        <p class="online-lobby-desc">ルームコードを発行し、友達に伝えて参加してもらいます。</p>
+        <button id="btn-online-create-room" class="primary-btn">ルームを作成</button>
+      </div>
+
+      <div class="online-lobby-divider"></div>
+
+      <div class="online-lobby-block">
+        <h3>ルームに参加する</h3>
+        <p class="online-lobby-desc">友達から教えてもらったルームコードを入力してください。</p>
+        <input type="text" id="online-join-code-input" class="name-edit-input online-join-input" maxlength="5" placeholder="例：7NH78">
+        <button id="btn-online-join-room" class="primary-btn">ルームに参加</button>
+        <p id="online-join-error" class="online-join-error"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- オンライン対戦：待機画面(ルーム作成後の相手待ち・属性選択待ち・再戦待ちで共用) -->
+  <section id="screen-online-waiting" class="screen">
+    <div class="online-waiting-box">
+      <div id="onlineWaitingCodeBlock" class="online-waiting-code-block" style="display:none;">
+        <p>ルームコード</p>
+        <div id="onlineWaitingCode" class="online-waiting-code"></div>
+      </div>
+      <p id="onlineWaitingMessage" class="online-waiting-message">相手の参加を待っています…</p>
+      <div class="online-waiting-spinner"></div>
+      <button id="btn-online-waiting-cancel" class="secondary-btn">キャンセルしてモード選択へ</button>
+    </div>
+  </section>
+
+  <!-- ストーリーモード画面 -->
+  <section id="screen-story-intro" class="screen">
+
+    <div class="story-left">
+      <img src="images/ui/story-intr.png" alt="image">
+    </div>
+
+    <div class="story-right">
+      <h2 class="story-title">ストーリーモード</h2>
+
+      <div class="story-text-box">
+        <p>
+          世界は突如現れた「時空の裂け目」によって混乱に陥った。<br>
+          あらゆる境線が混雑するカオスな世界ですべての世界に適応したのは,<br>
+          じゃんけんただ一つだった<br>
+          あなたはそんな世界でじゃんけんを極めるための旅に出かける。
+        </p>
+        <p>
+          これは、じゃんけんを巡る壮大な物語である。
+        </p>
+      </div>
+
+      <div class="story-controls">
+        <button id="btn-to-attr" class="primary-btn">ステージ選択へ</button>
+        <button id="btn-story-back" class="secondary-btn">戻る</button>
+      </div>
+    </div>
+
+  </section>
+  <!-- 属性選択画面 -->
+ <section id="screen-attr-select" class="screen">
+
+  <h2 class="attr-title">属性を選択</h2>
+
+  <!-- 属性カードはJS(renderAttrCards)がATTR_DATAから生成する -->
+  <div class="attr-list" id="attr-select-list"></div>
+ <div class="attr-select-bg"></div>
+  <button id="btn-attr-back" class="secondary-btn">戻る</button>
+ </section>
+
+ <!-- 属性確認画面 -->
+<section id="screen-attr-confirm" class="screen">
+
+  <div class="attr-confirm-row">
+    <div class="attr-confirm-left">
+      <img id="attr-confirm-img" src="" alt="attr-image">
+    </div>
+
+    <div class="attr-confirm-right">
+      <h2 id="attr-confirm-name" class="attr-confirm-title"></h2>
+
+      <p id="attr-confirm-desc" class="attr-confirm-desc"></p>
+
+      <div class="attr-confirm-controls">
+        <button id="btn-to-stage" class="primary-btn">戦闘へ</button>
+        <button id="btn-confirm-back" class="secondary-btn">戻る</button>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ステージ選択画面 -->
+<section id="screen-stage-select" class="screen">
+  <h1 class="mymenu-title">ステージ選択</h1>
+  <button id="btn-stage-select-back" class="mymenu-back-btn">← 戻る</button>
+
+  <div class="settings-tab">
+    <h2>ステージ</h2>
+    <div id="stage-list" class="stage-list"></div>
+  </div>
+</section>
+
+<!-- ステージ確認画面 -->
+<section id="screen-stage-confirm" class="screen">
+  <h1 class="mymenu-title">ステージ確認</h1>
+  <button id="btn-stage-confirm-back" class="mymenu-back-btn">← 戻る</button>
+
+  <div class="settings-tab">
+    <h2 id="stageConfirmName"></h2>
+    <p id="stageConfirmIntro"></p>
+    <p id="stageConfirmEnemies"></p>
+    <p id="stageConfirmReward"></p>
+    <button id="btn-stage-confirm-enter" class="primary-btn">ステージに入る</button>
+  </div>
+</section>
+
+<!-- アイテムカード選択画面 -->
+<section id="screen-item-card-select" class="screen">
+  <h1 class="mymenu-title">アイテムカードを選択</h1>
+
+  <div class="settings-tab">
+    <div id="item-card-list" class="skin-list"></div>
+  </div>
+</section>
+
+<!-- ストーリーリザルト画面 -->
+<section id="screen-story-result" class="screen">
+  <h1 id="storyResultTitle" class="mymenu-title"></h1>
+
+  <div class="settings-tab">
+    <div id="storyResultBody"></div>
+    <button id="btn-story-result-to-stage-select" class="primary-btn">ステージ選択へ戻る</button>
+    <button id="btn-story-result-to-mode" class="secondary-btn">モード選択へ戻る</button>
+  </div>
+</section>
+
+<!-- CPU属性選択画面 -->
+<section id="screen-cpu-attr-select" class="screen">
+
+  <h2 id="cpu-attr-select-title" class="attr-title">CPU戦の属性を選択</h2>
+
+  <!-- 属性カードはJS(renderAttrCards)がATTR_DATAから生成する -->
+  <div class="attr-list" id="cpu-attr-select-list"></div>
+
+  <button id="btn-cpu-attr-back" class="secondary-btn">戻る</button>
+</section>
+
+<!-- CPU属性確認画面 -->
+<section id="screen-cpu-attr-confirm" class="screen">
+
+  <h2 id="cpu-attr-confirm-title" class="attr-title">CPU戦 属性確認</h2>
+
+  <div class="attr-confirm-box">
+    <img id="cpu-attr-confirm-img" src="" alt="attr" class="confirm-img">
+    <p id="cpu-attr-confirm-text" class="confirm-text"></p>
+  </div>
+
+  <button id="btn-cpu-attr-confirm-back" class="secondary-btn">戻る</button>
+  <button id="btn-cpu-attr-confirm-next" class="primary-btn">戦闘へ</button>
+
+</section>
+
+ <!-- 戦闘画面 -->
+<section id="screen-battle" class="screen battle-screen">
+<div id="damageFlashLayer"></div>
+<div id="bigResultText" class="big-result-text"></div>
+<div id="bigAttackCutIn" class="big-attack-cutin">
+  <img id="cutinIcon" class="cutin-icon" src="" alt="">
+  <span class="cutin-text"></span>
+</div>
+
+  <!-- 左上：メニュー -->
+  <button id="battle-menu-btn" class="battle-menu">≡</button>
+  <div id="battleMenuPanel" class="battle-menu-panel">
+    <div class="battle-menu-section">
+      <label>BGM 音量</label>
+      <input type="range" id="battle-bgm-volume" min="0" max="1" step="0.01" value="0.6">
+    </div>
+    <div class="battle-menu-section">
+      <label>SE 音量</label>
+      <input type="range" id="battle-se-volume" min="0" max="1" step="0.01" value="1">
+    </div>
+    <button id="battle-menu-restart" class="secondary-btn battle-menu-action">リスタート</button>
+    <button id="battle-menu-surrender" class="secondary-btn battle-menu-action">降参する</button>
+  </div>
+
+  <!-- 中央：敵 -->
+  <div class="enemy-area">
+    <img id="enemy-img" class="enemy-img" src="">
+    <div id="cpuDamageNumberLayer"></div>
+  </div>
+
+  <!-- CPUの手（じゃんけん後表示） -->
+  <div class="cpu-hand-area">
+    <div class="cpu-hand-box">
+     <img id="cpuHandImg" class="cpu-hand-img" src="">
+    </div>
+     <p id="cpuHandText" class="cpu-hand-text"></p>
+  </div>
+
+  <!-- 右上：CPU HUD（属性アイコン＋HP/パワー＋属性固有ステータス） -->
+  <div class="hud-panel cpu-hud">
+    <div class="hud-top">
+      <div class="cpu-attr-box">
+        <img id="cpu-attr-icon" class="attr-icon" src="">
+      </div>
+      <div class="hud-bars">
+        <p id="cpuHpText" class="hp-text"></p>
+        <div class="bar enemy-hp"><div id="cpuHpBar"></div></div>
+        <div class="bar enemy-power"><div id="cpuPowerBar"></div></div>
+      </div>
+    </div>
+    <div id="cpu-status-window" class="status-window">
+      <!-- JSで中身を入れる -->
+    </div>
+  </div>
+
+  <!-- 左下：プレイヤー HUD（属性アイコン＋HP/パワー＋属性固有ステータス） -->
+  <div class="hud-panel player-hud">
+    <div id="playerDamageNumberLayer"></div>
+    <div class="hud-top">
+      <div class="player-attr-box">
+        <img id="player-attr-icon" class="attr-icon" src="">
+      </div>
+      <div class="hud-bars">
+        <p id="playerHpText" class="hp-text"></p>
+        <div class="bar player-hp"><div id="playerHpBar"></div></div>
+        <div class="bar player-power"><div id="playerPowerBar"></div></div>
+      </div>
+    </div>
+    <div id="player-status-window" class="status-window">
+      <!-- JSで中身を入れる -->
+    </div>
+  </div>
+
+  <!-- 下中央：手札カード（グー・チョキ・パーの並び） -->
+  <div class="hand-cards">
+    <div class="hand-card" data-hand="0">
+      <img src="./images/hands/R.png" class="handcard-img" draggable="false">
+    </div>
+    <div class="hand-card" data-hand="2">
+      <img src="./images/hands/S.png" class="handcard-img" draggable="false">
+    </div>
+    <div class="hand-card" data-hand="1">
+      <img src="./images/hands/P.png" class="handcard-img" draggable="false">
+    </div>
+  </div>
+
+  <!-- プレイヤーの手 -->
+  <div class="player-hand-area">
+    <div class="player-hand-box">
+      <img id="playerHandImg" class="player-hand-img" src="">
+    </div>
+    <p id="playerHandText" class="player-hand-text"></p>
+  </div>
+
+<div id="battleScene">
+
+  
+  <!-- 戦闘画面のUI -->
+</div>
+
+
+  <div id="jankenScene" class="janken-scene">
+  <img id="jankenPlayerCard" class="janken-card player" src="">
+  <img id="jankenCpuCard" class="janken-card cpu" src="">
+  <div id="jankenText" class="janken-text"></div>
+ </div>
+<div id="winLayer" class="win-layer">YOU WIN</div>
+
+
+  <!-- 結果テキスト -->
+  <div id="resultText" class="result-text"></div>
+
+<div id="darkOverlay"></div>
+
+<div id="resultScreen" style="display:none;">
+  <div class="result-box">
+    <div id="resultMessage" class="result-message"></div>
+    <div class="result-buttons">
+      <button id="restartBtn" class="primary-btn">もう一度戦う</button>
+      <button id="btn-result-to-attr" class="secondary-btn">属性選択へ戻る</button>
+      <button id="btn-result-to-mode" class="secondary-btn">モード選択へ戻る</button>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+
+ <!-- 汎用確認モーダル（リスタート・降参・セーブデータリセットなど、確認を挟みたい操作から画面を問わず共通で呼び出す。
+      #game-canvas直下(どの.screenにも属さない)に置くことで、戦闘画面以外からも呼び出せるようにしている） -->
+ <div id="confirmModal" class="confirm-modal">
+   <div class="confirm-box">
+     <div id="confirmModalMessage" class="confirm-message"></div>
+     <div class="confirm-buttons">
+       <button id="confirmModalYes" class="primary-btn">はい</button>
+       <button id="confirmModalNo" class="secondary-btn">いいえ</button>
+     </div>
+   </div>
+ </div>
+
+ <!-- 名前入力モーダル（プロフィール名の変更など、テキスト入力を伴う確認から共通で呼び出す） -->
+ <div id="nameEditModal" class="confirm-modal">
+   <div class="confirm-box">
+     <div id="nameEditModalMessage" class="confirm-message"></div>
+     <input type="text" id="nameEditModalInput" class="name-edit-input" maxlength="12">
+     <div class="confirm-buttons">
+       <button id="nameEditModalSave" class="primary-btn">保存</button>
+       <button id="nameEditModalCancel" class="secondary-btn">キャンセル</button>
+     </div>
+   </div>
+ </div>
+
+ <div class="curtain curtain-top"></div>
+ <div class="curtain curtain-bottom"></div>
+
+  </div>
+  <!-- #game-canvas ここまで -->
+
+  <!-- オンライン対戦用。実際に接続するサーバーのURLはmain.jsのgetOnlineServerUrl()で指定する -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

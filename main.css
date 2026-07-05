@@ -1,0 +1,2299 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #000; /* #game-canvasの外側（レターボックス）の色 */
+  overflow: hidden;  /* スクロールバーを出さない */
+}
+
+body {
+  color: #fff;
+  font-family: "Noto Sans JP", sans-serif;
+  text-align: center;
+}
+
+/* 固定デザイン解像度(1920x1080)のゲーム本体。
+   実ウィンドウのサイズに関わらず常に同じ比率で見えるよう、
+   main.js(updateGameScale)がtransform: scale(...)で拡縮する。
+   transformを持つため、内部のposition:fixed/absolute要素の基準(containing block)にもなる */
+#game-canvas {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 1920px;
+  height: 1080px;
+  background: #fff; /* 個別に背景を指定していない画面の下地（従来のbody背景と同じ白） */
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* 画面共通 */
+.screen {
+  display: none;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.screen.active {
+  display: block;
+}
+
+/* 縦向きのスマホ／狭い画面ではゲーム全体を覆って回転を促す。
+   OSレベルの回転ロックはブラウザ対応がまちまち（特にiOS Safariは非対応）なため、
+   確実に効くCSSでの案内表示を主手段とする。 */
+.rotate-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000000;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #000;
+  color: #fff;
+  text-align: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.rotate-overlay-icon {
+  font-size: 48px;
+  animation: rotateHint 1.6s ease-in-out infinite;
+}
+
+.rotate-overlay-text {
+  font-size: clamp(16px, 4vw, 20px);
+  font-weight: 700;
+  margin: 0;
+}
+
+@keyframes rotateHint {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
+}
+
+@media (orientation: portrait) and (max-width: 900px) {
+  .rotate-overlay {
+    display: flex;
+  }
+}
+/* 黒帯（カーテン）。#game-canvasがtransformを持つのでabsoluteの基準はそちらになる */
+.curtain {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: #000;
+  z-index: 5;
+  transition: transform 0.6s ease;
+}
+
+.title-blak {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: #000;
+  z-index: 6;
+  transition: transform 0.6s ease;
+}
+
+.title-blak-top{
+  top: 0;
+  transform: translateY(-80%);
+}
+
+.title-blak-bottom {
+  bottom: 0;
+  transform: translateY(80%);
+}
+
+/* 上の黒帯は上に隠れる */
+.curtain-top {
+  top: 0;
+  transform: translateY(-100%);
+}
+
+/* 下の黒帯は下に隠れる */
+.curtain-bottom {
+  bottom: 0;
+  transform: translateY(100%);
+}
+
+/* 閉じるアニメ（中央に寄る） */
+.curtain.close {
+  transform: translateY(0);
+}
+
+/* 開くアニメ（外側に戻る） */
+.curtain.open-top {
+  transform: translateY(-100%);
+}
+.curtain.open-bottom {
+  transform: translateY(100%);
+}
+
+.mode-curtain {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: #000;
+  z-index: 5;
+  transition: transform 0.6s ease;
+}
+#screen-mode .mode-curtain-top,
+#screen-mode .mode-curtain-bottom {
+  visibility: hidden;      /* ← 画面切り替え前は見えない */
+  transform: translateY(0); /* ← 閉じた状態で待機 */
+}
+/* タイトル内容 */
+.title-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  z-index: 2;
+  margin-top: 54px;
+}
+
+/* タイトル画像（1920x1080基準の固定サイズ） */
+.title-img {
+  width: 1040px;
+}
+
+.start-text {
+  font-size: 38px;
+  color: #000;
+  opacity: 0.9;
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+
+/* モード選択タイトル */
+/* タイトル */
+.mode-title {
+  text-align: center;
+  margin-top: 40px;
+  font-size: 32px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(0,0,0,0.7);
+}
+
+/* ============ モード選択ハブ ============ */
+
+.mode-hub {
+  position: relative;
+  z-index: 2; /* .bg-effect（z-index:1）より前面に固定 */
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* 画面が縦に余っていてもボタン群が上に張り付かず、中央寄り（結果的に下寄り）に来るようにする */
+  gap: 18px;
+  padding: 32px;
+  /* コイン表示（.mode-topbar）を絶対配置で右上に浮かせている分、
+     ボタン群と重ならないよう上部の余白を確保する */
+  padding-top: 90px;
+}
+
+/* コイン表示は中央寄せの対象から外し、常に右上に固定表示する */
+.mode-topbar {
+  position: absolute;
+  top: 32px;
+  right: 32px;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.mode-resource-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  padding: 6px 18px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* 左上：プロフィール(アイコン＋名前)チップ。.mode-topbarと左右対称の位置に固定表示する */
+.mode-profile-chip {
+  position: absolute;
+  top: 28px;
+  left: 28px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 28px 10px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  color: #fff;
+}
+
+.mode-profile-chip:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.profile-chip-name {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* プロフィールアイコン(モード選択の小さいチップ・プロフィール画面の大きい見出しの両方で使う) */
+.profile-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+}
+
+.profile-icon-img {
+  width: 90%;
+  height: 90%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.profile-icon-large {
+  width: 100px;
+  height: 100px;
+}
+
+.profile-panel {
+  max-width: 720px;
+  text-align: left;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.profile-header-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.profile-name-large {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.profile-section {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.profile-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.profile-section h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.profile-hand-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.profile-stat-row {
+  display: flex;
+  justify-content: space-between;
+  max-width: 280px;
+  font-size: 14px;
+}
+
+/* ===== オンライン対戦：ルーム作成/参加ロビー ===== */
+.online-lobby-panel {
+  max-width: 560px;
+  text-align: left;
+}
+
+.online-lobby-block {
+  padding: 10px 0;
+}
+
+.online-lobby-block h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.online-lobby-desc {
+  margin: 0 0 14px;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.online-lobby-divider {
+  height: 1px;
+  margin: 20px 0;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.online-join-input {
+  max-width: 240px;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+}
+
+.online-join-error {
+  margin: 12px 0 0;
+  min-height: 1.4em;
+  color: #ff6b6b;
+  font-size: 14px;
+}
+
+/* ===== オンライン対戦：待機画面(相手参加待ち・属性選択待ち・再戦待ち共用) =====
+   showScreen()は対象の.screenへstyle.display="block"を直接セットするため(project-roadmapの既知の罠)、
+   画面本体をflexにはせず、内側の.online-waiting-boxを絶対配置で中央寄せする */
+.online-waiting-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 40px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 16px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.online-waiting-code-block {
+  margin-bottom: 28px;
+}
+
+.online-waiting-code {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 10px;
+  color: #ffcc00;
+  margin-top: 8px;
+}
+
+.online-waiting-message {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.online-waiting-spinner {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 28px;
+  border: 5px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffcc00;
+  border-radius: 50%;
+  animation: onlineWaitingSpin 1s linear infinite;
+}
+
+@keyframes onlineWaitingSpin {
+  to { transform: rotate(360deg); }
+}
+
+.mode-main {
+  display: flex;
+  flex: 0 1 auto;
+  gap: 32px;
+  align-items: stretch;
+}
+
+/* 左：キャラクターパネル（プレースホルダー） */
+.mode-character-panel {
+  position: relative;
+  flex: 0 0 38%;
+  max-width: 560px;
+  min-height: 420px;
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255,255,255,0.12), rgba(0,0,0,0.35) 70%),
+    linear-gradient(180deg, #2a1a45, #120a24);
+  box-shadow: 0 0 20px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+}
+
+.mode-character-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 70%, rgba(255,210,77,0.25), transparent 60%);
+  pointer-events: none;
+}
+
+.mode-character-art {
+  position: relative;
+  width: 70%;
+  max-width: 320px;
+  filter: drop-shadow(0 10px 25px rgba(0,0,0,0.5));
+}
+
+/* 右：モードタイルグリッド。新モードは<button>を1つ追加するだけで自然に折り返す */
+.mode-grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-auto-rows: minmax(90px, auto);
+  gap: 20px;
+  align-content: start;
+}
+
+.mode-btn.tile-wide {
+  grid-column: 1 / -1;
+  min-height: 110px;
+  font-size: 26px;
+}
+
+.mode-btn.tile {
+  min-height: 72px;
+  font-size: 19px;
+}
+
+/* ▼ ボタン共通デザイン。padding方式からグリッドセルが高さを決める方式に置き換え */
+.mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 16px;
+  font-weight: 700;
+  border-radius: 14px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  transition: 0.25s ease;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  z-index: 2; /* ← 背景より前に固定 */
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* オンラインは準備中：見た目だけ控えめに（クリック/ホバー自体は現状どおり生きたまま） */
+.mode-btn.disabled {
+  opacity: 0.55;
+  filter: grayscale(0.35);
+}
+.mode-btn.disabled:hover {
+  transform: none;
+  filter: grayscale(0.35);
+}
+
+
+/* ストーリー → 専用ボタン画像（テキストは画像に描き込み済みのため文字は非表示）
+   画像全体が見切れないよう、画像の縦横比に合わせて高さを可変にする */
+.mode-btn.story {
+  background: url("images/ui/story-btn.png") no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 1453 / 348;
+  height: auto;
+  box-shadow: none;
+  font-size: 0;
+}
+
+/* オンライン → 専用ボタン画像（テキストは画像に描き込み済みのため文字は非表示）
+   画像全体が見切れないよう、画像の縦横比に合わせて高さを可変にする */
+.mode-btn.online {
+  background: url("images/ui/online-btn.png") no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 1400 / 304;
+  height: auto;
+  box-shadow: none;
+  font-size: 0;
+}
+
+/* ショップ → 緑系 */
+.mode-btn.shop {
+  background: linear-gradient(145deg, #4dff88, #00b34d);
+}
+
+/* クエスト → 紫系 */
+.mode-btn.quest {
+  position: relative; /* バッジ(.quest-badge)を右上に絶対配置するため */
+  background: linear-gradient(145deg, #b84dff, #6a00b3);
+}
+
+/* 獲得可能なクエスト件数バッジ */
+.quest-badge {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 13px;
+  background: #ff3333;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+
+/* CPU → オレンジ系 */
+.mode-btn.cpu {
+  background: linear-gradient(145deg, #ffb84d, #cc7a00);
+}
+
+/* MYメニュー → ピンク系 */
+.mode-btn.mymenu {
+  background: linear-gradient(145deg, #ff4da6, #b30059);
+}
+
+/* ホバーで光る */
+.mode-btn:hover {
+  transform: translateY(-4px);
+  filter: brightness(1.15);
+}
+
+/* 固定解像度化に伴い、実ウィンドウ幅に反応するレスポンシブ切り替えは廃止
+   （#game-canvas全体が一様に拡縮されるため、内部要素ごとに個別のブレークポイントは不要） */
+
+#mode-description {
+  position: absolute;
+  bottom: -100px;        /* ← 初期状態は画面外に隠す */
+  left: 0;
+  width: 100%;
+  height: 50px;
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 20px;
+  font-size: 22px;
+  box-shadow: 0 -4px 10px rgba(0,0,0,0.5);
+  transition: bottom 0.3s ease;
+  pointer-events: none;
+  text-align: center;
+   z-index: 3;   
+}
+
+
+#screen-mode .bg-effect {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.4s ease, background 0.4s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+#screen-mode.bg-story .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(255, 0, 0, 0.4), rgba(255, 0, 0, 0.4)),
+    url("images/ui/story-bg.png");
+}
+
+/* オンライン背景（青） */
+#screen-mode.bg-online .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(0, 80, 255, 0.4), rgba(0, 80, 255, 0.4)),
+    url("images/ui/online-bg.png");
+}
+
+/* ショップ背景（緑） */
+#screen-mode.bg-shop .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(0, 255, 120, 0.4), rgba(0, 255, 120, 0.4)),
+    url("images/ui/shop-bg.png");
+}
+
+/* クエスト背景（紫） */
+#screen-mode.bg-quest .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(150, 0, 255, 0.4), rgba(150, 0, 255, 0.4)),
+    url("images/ui/quest-bg.png");
+}
+
+/* CPU背景（オレンジ） */
+#screen-mode.bg-cpu .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(255, 120, 0, 0.4), rgba(255, 120, 0, 0.4)),
+    url("images/ui/cpu-bg.png");
+}
+
+/* MYメニュー背景（ピンク） */
+#screen-mode.bg-mymenu .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(255, 0, 150, 0.4), rgba(255, 0, 150, 0.4)),
+    url("images/ui/mymenu-bg.png");
+}
+
+
+.settings-tab {
+  padding: 20px;
+  background: rgba(0,0,0,0.6);
+  border-radius: 12px;
+  color: #fff;
+  width: 90%;
+  margin: 0 auto;
+  margin-top: 20px;
+}
+
+
+/* MYメニューのタブ切り替え（.settings-tabは他画面（ショップ等）とも共有しているクラスなので、
+   表示/非表示の制御は専用の.mymenu-tab-panelだけに掛ける） */
+.mymenu-tab-nav {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px auto 0;
+  width: 90%;
+}
+
+.mymenu-tab-btn {
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.mymenu-tab-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.mymenu-tab-btn.active {
+  background: #ffd24d;
+  color: #222;
+}
+
+.mymenu-tab-panel {
+  display: none;
+}
+
+.mymenu-tab-panel.active {
+  display: block;
+}
+
+.volume-control {
+  margin: 20px 0;
+}
+
+.volume-control label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 20px;
+}
+
+#bgm-volume,
+#se-volume {
+  width: 100%;
+}
+
+/* 設定：じゃんけんカードの出し方（クリック／ドラッグ＆ドロップ）切り替え */
+.hand-input-mode-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hand-input-mode-btn {
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.hand-input-mode-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.hand-input-mode-btn.active {
+  background: #ffd24d;
+  color: #222;
+}
+
+/* MYメニュー・ショップ・クエストを前面に出して中身を見えるようにする */
+#screen-mymenu,
+#screen-shop,
+#screen-quest,
+#screen-stage-select,
+#screen-stage-confirm,
+#screen-item-card-select,
+#screen-story-result {
+  position: relative;
+  z-index: 10;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding-top: 40px;
+  box-sizing: border-box;
+}
+
+.coins-display {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 10px;
+}
+
+.skin-list {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.skin-card {
+  width: 140px;
+  padding: 16px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 14px;
+  text-align: center;
+  box-shadow: 0 0 15px rgba(0,0,0,0.4);
+}
+
+.skin-card img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
+
+/* アイコン背景（色・グラデーション）のプレビュー用スウォッチ */
+.iconbg-swatch {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  margin: 0 auto 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+}
+
+/* MYメニュー：アイコンタブ全体のレイアウト（左＝プレビュー、右＝選択リスト） */
+.icon-tab-layout {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+/* 左：装備中のアイコン画像＋アイコン背景の組み合わせプレビュー。
+   .screen祖先にoverflow:hiddenが掛かっておりposition:stickyが効かないため、
+   代わりに右側の.icon-list-colだけを内部スクロールさせることでプレビューを不動にする */
+.icon-preview-col {
+  flex: 0 0 auto;
+}
+
+.icon-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.5);
+}
+
+.icon-preview-img {
+  width: 90%;
+  height: 90%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* 右：アイコン画像・背景の選択リスト。この中だけスクロールする */
+.icon-list-col {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.settings-tab h3 {
+  margin-top: 24px;
+  margin-bottom: 6px;
+}
+
+.settings-tab h3:first-child {
+  margin-top: 0;
+}
+
+.skin-card .skin-name {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.skin-card .skin-status {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.skin-card.equipped {
+  outline: 2px solid #ffd24d;
+}
+
+.skin-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, filter 0.2s;
+}
+
+.skin-card.clickable:hover {
+  transform: translateY(-4px);
+  filter: brightness(1.15);
+}
+
+/* ===== ステージ選択：横長ボックスを縦に並べる（今後ステージが増えるほど下に積まれる） ===== */
+.stage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.stage-card {
+  display: flex;
+  align-items: stretch;
+  min-height: 140px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 0 15px rgba(0,0,0,0.4);
+}
+
+.stage-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, filter 0.2s;
+}
+
+.stage-card.clickable:hover {
+  transform: translateY(-4px);
+  filter: brightness(1.15);
+}
+
+.stage-card-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: left;
+}
+
+.stage-card-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.stage-card.cleared {
+  outline: 2px solid #ffd24d;
+}
+
+.stage-cleared-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #ffd24d;
+  color: #402d00;
+  white-space: nowrap;
+}
+
+.stage-card-desc {
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.stage-card-reward {
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.stage-card-image {
+  flex: 0 0 280px;
+}
+
+.stage-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ===== クエスト画面(タブ+進捗トラック方式、2026-07-05) ===== */
+.quest-layout {
+  display: flex;
+  gap: 20px;
+  width: 90%;
+  max-width: 1400px;
+  margin: 20px auto 0;
+  height: 860px;
+  box-sizing: border-box;
+}
+
+.quest-tab-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.quest-tab-btn {
+  padding: 14px 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.quest-tab-btn:hover {
+  background: rgba(255,255,255,0.16);
+}
+
+.quest-tab-btn.active {
+  background: rgba(255, 200, 0, 0.85);
+  color: #1a1a1a;
+}
+
+.quest-content-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0,0,0,0.6);
+  border-radius: 12px;
+  padding: 20px;
+  box-sizing: border-box;
+  gap: 14px;
+}
+
+.quest-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  text-align: left;
+}
+
+.quest-line {
+  padding: 22px 24px 48px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 12px;
+}
+
+.quest-line-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 18px;
+}
+
+.quest-line-title {
+  font-weight: 700;
+}
+
+.quest-line-count {
+  opacity: 0.8;
+  font-size: 15px;
+}
+
+.quest-line-desc {
+  margin: 0 0 22px;
+  font-size: 14px;
+  opacity: 0.75;
+  line-height: 1.4;
+}
+
+.quest-line-track {
+  position: relative;
+  height: 8px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 4px;
+  margin: 0 20px;
+}
+
+.quest-line-track-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #ffcc00, #ff8800);
+  border-radius: 4px;
+}
+
+.quest-node {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.quest-node-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #555;
+  border: 3px solid #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.quest-node-target {
+  position: absolute;
+  bottom: 32px;
+  font-size: 14px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.quest-node-reward {
+  position: absolute;
+  top: 32px;
+  font-size: 14px;
+  color: #ffd24d;
+  white-space: nowrap;
+}
+
+.quest-node.locked .quest-node-dot {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.25);
+}
+
+.quest-node.claimable .quest-node-dot {
+  background: #ff3333;
+  border-color: #ffcccc;
+  box-shadow: 0 0 12px rgba(255, 51, 51, 0.8);
+  cursor: pointer;
+}
+
+.quest-node.claimed .quest-node-dot {
+  background: #2fae57;
+  border-color: #9be8b3;
+}
+
+.quest-claim-all-btn {
+  position: relative;
+  align-self: center;
+  padding: 12px 28px;
+}
+
+.quest-claim-all-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 8px;
+  border-radius: 10px;
+  background: #ff3333;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mymenu-back-btn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 99999;
+  padding: 10px 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(145deg,#ff4da6,#b30059);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  cursor: pointer;
+  transition: transform .12s ease, filter .12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ホバー／フォーカス時の視覚効果 */
+.mymenu-back-btn:hover,
+.mymenu-back-btn:focus {
+  transform: translateY(-3px);
+  filter: brightness(1.08);
+  outline: none;
+}
+
+/* 画面切替の最小ルール（必ず一箇所にまとめる） */
+
+/* ===== ストーリー画面（左：画像 / 右：テキスト） ===== */
+
+/* 基本（非表示時は .screen の display:none に従う） */
+/* ===== ストーリー画面（左：画像 / 右：テキスト） ===== */
+#screen-story-intro {
+  padding: 0;
+  background: linear-gradient(180deg, #700000, #300000);
+  color: #fff;
+  overflow: hidden;
+  text-align: left; /* inline-block の隙間対策 */
+  font-size: 0;     /* inline-block の隙間を消す */
+}
+
+/* 左側：キャラ画像 */
+.story-left {
+  display: inline-block;
+  vertical-align: top;
+  width: 45%;
+  padding: 20px;
+  box-sizing: border-box;
+  font-size: 16px; /* 子要素の文字サイズを戻す */
+  text-align: center;
+}
+
+.story-left img {
+  width: 90%;
+  max-width: 420px;
+  filter: drop-shadow(0 0 25px rgba(255,0,0,0.6));
+}
+
+/* 右側：タイトル＋説明＋ボタン */
+.story-right {
+  display: inline-block;
+  vertical-align: top;
+  width: 55%;
+  padding: 40px 30px;
+  box-sizing: border-box;
+  font-size: 16px; /* 子要素の文字サイズを戻す */
+}
+
+.story-title {
+  font-size: 32px;
+  font-weight: 900;
+  margin-bottom: 20px;
+  text-shadow: 0 0 10px rgba(0,0,0,0.6);
+}
+
+.story-text-box {
+  background: rgba(0,0,0,0.45);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.4);
+  height: 300px;
+  overflow-y: auto;
+  font-size: 18px;
+  line-height: 1.6;
+  margin-bottom: 30px;
+}
+
+/* ボタン */
+.story-controls {
+  display: flex;
+  gap: 20px;
+}
+
+/* ボタンスタイル（既存と整合） */
+.primary-btn {
+  padding: 14px 26px;
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(145deg, #ff4d4d, #b30000);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  cursor: pointer;
+  transition: 0.2s;
+}
+.primary-btn:hover { transform: translateY(-3px); filter: brightness(1.15); }
+
+.secondary-btn {
+  padding: 12px 20px;
+  font-size: 16px;
+  background: rgba(255,255,255,0.2);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.secondary-btn:hover { transform: translateY(-3px); filter: brightness(1.2); }
+
+/* 戻るボタンは前面だが邪魔しない */
+.small-back-btn { position: absolute; top: 12px; left: 12px; z-index: 100; }
+
+/* ===== 属性選択画面 ===== */
+#screen-attr-select {
+  padding: 40px;
+  text-align: center;
+  background: linear-gradient(180deg, #700000, #300000);
+  color: #fff;
+  box-sizing: border-box;
+}
+
+.attr-title {
+  font-size: 32px;
+  font-weight: 900;
+  margin-bottom: 30px;
+}
+
+.attr-list {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+.attr-card {
+  width: 220px;
+  padding: 20px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+  box-shadow: 0 0 15px rgba(0,0,0,0.4);
+  box-sizing: border-box;
+}
+
+.attr-card:hover {
+  transform: translateY(-6px);
+  filter: brightness(1.2);
+}
+
+.attr-card img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
+/* 属性選択画面（ストーリー）：画面幅に関わらず必ず横5個で並べる
+   minmax(0, 1fr)にしないと、カード内の画像やテキストの最小サイズにグリッドの列幅が
+   引っ張られてはみ出す（blowout）ことがあるため、列の最小幅を0に固定しておく */
+#screen-attr-select .attr-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 20px;
+}
+
+#screen-attr-select .attr-card {
+  width: auto;
+  min-width: 0;
+  padding: 18px;
+}
+
+#screen-attr-select .attr-card img {
+  width: 100%;
+  max-width: 90px;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto 10px;
+}
+
+#screen-attr-select .attr-card h3 {
+  font-size: 16px;
+  margin: 4px 0;
+}
+
+#screen-attr-select .attr-card p {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+/* 戻るボタンを画面左上に固定表示する */
+#btn-attr-back,
+#btn-cpu-attr-back {
+  position: absolute;
+  left: 30px;
+  top: 30px;
+  z-index: 100;
+}
+
+#screen-attr-confirm {
+  width: 100%;
+  padding: 40px;
+  background: linear-gradient(180deg, #700000, #300000);
+  color: #fff;
+  box-sizing: border-box;
+}
+
+/* 画像とテキストを横並びに。
+   showScreen()がJS側でstyle.display="block"を直接指定するため、
+   #screen-attr-confirm自体にdisplay:flexを置いても効かない。内側のラップ要素に持たせる */
+.attr-confirm-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 60px;
+}
+
+/* 左側（画像。相対サイズを下げて横並びを維持しやすくする） */
+.attr-confirm-left {
+  flex: 0 1 220px;
+  text-align: center;
+}
+
+.attr-confirm-left img {
+  width: 65%;
+  max-width: 200px;
+  filter: drop-shadow(0 0 20px rgba(255,255,255,0.3));
+}
+
+/* 右側（テキスト・ボタン。画像のすぐ右に表示） */
+.attr-confirm-right {
+  flex: 1 1 420px;
+  max-width: 600px;
+}
+
+.attr-confirm-title {
+  font-size: 32px;
+  font-weight: 900;
+  margin-bottom: 20px;
+}
+
+.attr-confirm-desc {
+  background: rgba(255,255,255,0.1);
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 30px;
+  line-height: 1.6;
+}
+
+.attr-confirm-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+
+/* ===== cpuのscc ===== */
+#screen-cpu-attr-select {
+  position: relative;
+  padding: 40px;
+  text-align: center;
+}
+
+/* 画面幅に関わらず必ず横5個で並べる（属性選択画面と同じ方針。
+   minmax(0, 1fr)でグリッドのはみ出し(blowout)を防ぐ） */
+#screen-cpu-attr-select .attr-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 20px;
+}
+
+#screen-cpu-attr-select .attr-card {
+  width: auto;
+  min-width: 0;
+  padding: 18px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.2s;
+  box-sizing: border-box;
+}
+
+#screen-cpu-attr-select .attr-card img {
+  width: 100%;
+  max-width: 90px;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  margin: 0 auto 10px;
+}
+
+#screen-cpu-attr-select .attr-card h3 {
+  font-size: 16px;
+  margin: 4px 0;
+}
+
+#screen-cpu-attr-select .attr-card p {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+#screen-cpu-attr-select .attr-card:hover {
+  transform: translateY(-10px);
+}
+
+.bg-cpu-attr {
+  background: linear-gradient(#1a1f3a, #0d0f1c); /* 好きな色に変更OK */
+  background-size: cover;
+}
+
+/* ===== cpu属性確認画面 ===== */
+#screen-cpu-attr-confirm {
+  position: relative;
+  padding: 40px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.confirm-img {
+  max-width: 200px;   /* 好きなサイズに調整 */
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+
+
+    /* 以下はバトル画面のcss */
+
+/* バトル画面の敵エリア */
+/* 背景 */
+.battle-screen {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+}
+
+/* メニュー */
+.battle-menu {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  font-size: 38px;
+  background: rgba(0,0,0,0.4);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  z-index: 16;
+}
+
+/* メニューの中身（音量調整・リスタート・降参） */
+.battle-menu-panel {
+  position: absolute;
+  top: 76px;
+  left: 20px;
+  z-index: 17;
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+  width: 260px;
+  padding: 16px;
+  background: rgba(0,0,0,0.75);
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.5);
+}
+
+.battle-menu-panel.show {
+  display: flex;
+}
+
+.battle-menu-section label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #fff;
+}
+
+.battle-menu-section input[type="range"] {
+  width: 100%;
+}
+
+.battle-menu-action {
+  width: 100%;
+}
+
+/* 敵エリア（画面中央） */
+.enemy-area {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.enemy-img {
+  width: 320px;
+  height: auto;
+  transition: transform 0.6s ease;
+  transform: scale(0.5); /* 初期は少し小さく */
+}
+
+/* ドラッグ＆ドロップでカードを敵の上まで運んだときの視覚フィードバック（scaleは.zoom-inと競合するのでfilterのみ変更） */
+.enemy-area.drag-over .enemy-img {
+  filter: drop-shadow(0 0 24px rgba(255, 220, 80, 0.9));
+}
+
+.enemy-img.zoom-in {
+  transform: scale(1); /* ズームイン後の通常サイズ */
+}
+
+/* 汎用バー（親要素の幅に追従） */
+.bar {
+  width: 100%;
+  height: 18px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.bar div {
+  height: 100%;
+  background: linear-gradient(90deg, #ff4444, #ff8888);
+  width: 100%;
+}
+
+#playerPowerBar,
+#cpuPowerBar {
+  width: 0%;
+  height: 100%;
+  background: #4af; /* 好きな色 */
+  transition: width 0.2s ease;
+}
+
+.attr-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 手札カード */
+.hand-cards {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  z-index: 5;
+}
+
+.handcard-img{
+  width: 80%;
+  height:auto;
+  margin: 0 auto;
+  display: block;
+  object-fit: contain;
+  /* 画像のネイティブドラッグ／長押しメニューが独自ドラッグ操作の邪魔をするので無効化する */
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  pointer-events: none; /* 常に親の.hand-cardでポインタイベントを受ける */
+}
+
+/* 配布アニメの初期状態 */
+.hand-card {
+  width: 170px;
+  height: 240px;
+  overflow: hidden;
+  border-radius: 12px;
+  position: relative;
+  background: #fff;
+  transform: translateY(80px);
+  opacity: 0;
+  transition: transform 0.4s ease, opacity 0.4s ease;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 配布後の位置 */
+.hand-card.deal {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* ドラッグ＆ドロップモード：ホバーで掴めることが分かるカーソルにする */
+.hand-cards.mode-dragdrop .hand-card {
+  cursor: grab;
+  touch-action: none; /* ドラッグ中にスマホでページ自体がスクロールしないようにする */
+}
+
+/* ドラッグ中のカード：ポインタに追従させるためtransformはJSがインラインで直接制御する。
+   トランジションを切って追従を滑らかにし、他のカードより手前に表示する。 */
+.hand-card.dragging {
+  cursor: grabbing;
+  transition: none;
+  z-index: 20;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* 光る状態（選択状態） */
+.hand-card.selected {
+  transform: translateY(-10px) scale(1.1);
+  box-shadow: 0 0 20px rgba(255, 255, 0, 0.8);
+  opacity: 1;
+}
+
+/* selected のときはホバー演出を無効化 */
+.hand-card.selected:hover {
+  transform: translateY(-10px) scale(1.1);
+}
+
+
+
+/* ホバー演出は “deal が付いている時だけ” 有効にする */
+.hand-card.deal:hover {
+  transform: translateY(-20px) scale(1.05);
+  z-index: 10;
+}
+
+.hand-card.deal:not(:hover) {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.fly-away {
+  animation: flyAwayFast 1s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes flyAwayFast {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-380px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+.janken-scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none; /* ← 最初は非表示 */
+  z-index: 55; /* ← 手札カード(5)・darkOverlay(50)より前面に */
+}
+/* プレイヤーのカード（下から飛んでくる） */
+.janken-card.player {
+  position: absolute;
+  left: 50%;
+  bottom: -250px; /* 画面外からスタート */
+  transform: translateX(-50%);
+  transition: bottom 0.5s ease, transform 0.5s ease;
+}
+
+.janken-card.player.show {
+  bottom: 10%; /* 中央へ */
+}
+
+/* CPUカード（上から飛んでくる） */
+.janken-card.cpu {
+  position: absolute;
+  left: 50%;
+  top: -250px; /* 画面外からスタート */
+  transform: translateX(-50%);
+  transition: top 0.5s ease, transform 0.5s ease;
+}
+
+.janken-card.cpu.show {
+  top: 10%; /* 中央へ */
+}
+
+.janken-scene {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.janken-scene.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player-hand-img,
+.cpu-hand-img {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+}
+
+/* まだ手を出していない（srcが空）間は壊れた画像アイコンを表示しない */
+.player-hand-img[src=""],
+.cpu-hand-img[src=""] {
+  display: none;
+}
+.player-hand-area {
+  position: absolute;
+  left: 75%;        /* ← やや右寄り */
+  top: 55%;         /* ← 中央より少し下 */
+  transform: translate(-50%, -50%);
+  width: 170px;
+  height: 170px;
+  z-index: 20;
+  text-align: center;
+}
+
+.cpu-hand-area {
+  position: absolute;
+  left: 32%;        /* ← 敵のやや左寄り */
+  top: 51%;         /* ← 画面中央に移動した敵に合わせる */
+  transform: translate(-50%, -50%);
+  width: 170px;
+  height: 170px;
+  z-index: 20;
+  text-align: center;
+}
+
+/* 手アイコンの背景（黒い手アイコンでも背景と同化しないよう不透明気味に） */
+.cpu-hand-box,
+.player-hand-box {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 16px;             /* 角丸 */
+  backdrop-filter: blur(4px);      /* ぼかしで高級感 */
+  box-shadow: 0 0 12px rgba(0,0,0,0.5); /* 影で浮かせる */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* じゃんけん演出の大きい手札（黒い手アイコン対策でカード風の白背景を敷く） */
+.janken-card {
+  width: 220px;
+  height: 290px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+#darkOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.4); /* ← 40%暗くする */
+  pointer-events: none;        /* ← クリックを邪魔しない */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 50;                 /* ← じゃんけん演出より下、戦闘画面より上 */
+}
+
+#darkOverlay.show {
+  opacity: 1;
+}
+
+/* 画面全体を赤くするフラッシュ */
+.damage-flash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 0, 0, 0.35);
+  pointer-events: none;
+  animation: flash 0.25s ease;
+}
+
+@keyframes flash {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* シェイク演出 */
+.shake {
+  animation: shake 0.4s ease;
+}
+
+@keyframes shake {
+  0% { transform: translate(0px, 0px); }
+  20% { transform: translate(-10px, 5px); }
+  40% { transform: translate(8px, -8px); }
+  60% { transform: translate(-6px, 6px); }
+  80% { transform: translate(4px, -4px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+/* 敵画像赤フラッシュ */
+.enemy-flash {
+  filter: brightness(2) saturate(2) hue-rotate(-20deg);
+  animation: enemyFlash 0.2s ease;
+}
+
+@keyframes enemyFlash {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(2) saturate(2); }
+  100% { filter: brightness(1); }
+}
+
+/* 敵画像シェイク */
+.enemy-shake {
+  animation: enemyShake 0.4s ease;
+}
+
+@keyframes enemyShake {
+  0% { transform: translate(0,0); }
+  20% { transform: translate(-8px, 4px); }
+  40% { transform: translate(6px, -6px); }
+  60% { transform: translate(-4px, 4px); }
+  80% { transform: translate(3px, -3px); }
+  100% { transform: translate(0,0); }
+}
+
+.enemyFadeOut {
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+/* ダメージ数字 */
+#cpuDamageNumberLayer {
+  position: absolute;
+  top: 20%;
+  right: 20%;
+  pointer-events: none;
+}
+
+.cpu-damage-number {
+  font-size: 48px;
+  color: #ff4444;
+  font-weight: bold;
+  animation: cpuDamagePop 0.6s ease-out forwards;
+}
+
+@keyframes cpuDamagePop {
+  0% { transform: scale(0.2); opacity: 0; }
+  30% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* プレイヤー側のダメージ・回復数字（毒・呪い・自傷など、通常攻撃以外のダメージ源も表示） */
+#playerDamageNumberLayer {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.player-damage-number {
+  font-size: 40px;
+  color: #ff4444;
+  font-weight: bold;
+  animation: cpuDamagePop 0.6s ease-out forwards;
+}
+
+/* 回復表示（吸血・マジシャンなど）は緑色の"+N"にする */
+.heal-number {
+  color: #4caf50;
+}
+
+/* じゃんけんの結果（WIN!/LOSE!/DRAW!）を画面中央に大きく出す演出 */
+.big-result-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.4);
+  font-size: 110px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  -webkit-text-stroke: 3px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.big-result-text.show {
+  animation: bigResultPop 0.8s ease-out forwards;
+}
+
+.big-result-text.win { color: #ffcc00; }
+.big-result-text.lose { color: #ff4444; }
+.big-result-text.draw { color: #66ccff; }
+
+@keyframes bigResultPop {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  40% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+/* 10ダメージ以上を与えられそうな攻撃の「ぽん!」前カットイン演出 */
+.big-attack-cutin {
+  position: absolute;
+  top: 42%;
+  left: -140%;
+  width: 140%;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  overflow: hidden; /* アイコンが帯からはみ出した部分を隠す */
+  transform: skewY(-4deg);
+  background: #ff2d00; /* アイコンの背景色と統一。将来アイコンごとに色が変わる場合はここも連動させる */
+  box-shadow: 0 0 40px rgba(255, 60, 0, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 65;
+}
+
+.big-attack-cutin.show {
+  animation: cutinSweep 0.7s ease-out forwards;
+}
+
+.big-attack-cutin .cutin-icon {
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 50%;
+  background: #ff2d00; /* カットイン帯の背景色と揃えている。将来アイコンごとに色を持たせる場合はここを差し替える */
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.5);
+  transform: skewY(4deg); /* 親のskewを打ち消して画像自体は歪ませない */
+}
+
+.big-attack-cutin .cutin-icon[src=""] {
+  display: none; /* srcが未設定の時は非表示 */
+}
+
+.big-attack-cutin .cutin-text {
+  display: block;
+  text-align: center;
+  font-size: 56px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 6px;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes cutinSweep {
+  0% { left: -140%; opacity: 0; }
+  15% { left: -20%; opacity: 1; }
+  70% { left: -20%; opacity: 1; }
+  100% { left: 120%; opacity: 0; }
+}
+
+/* 10ダメージ以上が実際に着弾した瞬間の大きめフラッシュ・シェイク */
+.damage-flash.big-impact {
+  background: radial-gradient(circle, rgba(255, 220, 120, 0.9) 0%, rgba(255, 70, 0, 0.55) 45%, rgba(0, 0, 0, 0) 80%);
+  animation: bigImpactFlash 0.5s ease;
+}
+
+@keyframes bigImpactFlash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.big-shake {
+  animation: bigShake 0.5s ease;
+}
+
+@keyframes bigShake {
+  0% { transform: translate(0px, 0px); }
+  15% { transform: translate(-18px, 10px); }
+  30% { transform: translate(16px, -14px); }
+  45% { transform: translate(-14px, 12px); }
+  60% { transform: translate(10px, -10px); }
+  75% { transform: translate(-6px, 6px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+/* ===== プレイヤー / CPU HUDパネル（属性アイコン＋HP/パワー＋属性固有ステータスを1箇所に集約） ===== */
+.hud-panel {
+  position: absolute;
+  z-index: 15;
+  width: 400px;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 14px;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 12px rgba(0,0,0,0.4);
+  box-sizing: border-box;
+  color: #fff;
+}
+
+.player-hud {
+  left: 24px;
+  bottom: 24px;
+}
+
+/* 敵画像のすぐ右横に寄せる（画面端ではなく敵の近くに表示） */
+.cpu-hud {
+  right: 100px;
+  top: 110px;
+}
+
+.hud-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hud-bars {
+  flex: 1;
+  min-width: 0;
+}
+
+.hp-text {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.player-attr-box,
+.cpu-attr-box {
+  width: 78px;
+  height: 78px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.45); /* 半透明の黒 */
+  border-radius: 12px;             /* 角丸 */
+  backdrop-filter: blur(4px);      /* ぼかしで高級感 */
+  box-shadow: 0 0 8px rgba(0,0,0,0.4); /* 影で浮かせる */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-window {
+  margin-top: 8px;
+  padding: 14px;
+  background: rgba(0, 58, 49, 0.45);
+  border-radius: 12px;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 10px rgba(0, 181, 109, 0.4);
+  color: #ffffff;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.status-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.status-list li {
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+/* 属性固有ステータスの1行（ラベルと値を横並びで両端に配置） */
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.status-row:last-child {
+  margin-bottom: 0;
+}
+
+/* 結果テキスト */
+.result-text {
+  position: absolute;
+  top: 497px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  color: white;
+  text-shadow: 0 0 6px black;
+  white-space: nowrap;
+}
+
+.win-layer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 64px;
+  color: #fff;
+  text-shadow: 0 0 20px #000;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+
+/* リザルト画面 */
+#resultScreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 60; /* darkOverlay(50)やじゃんけん演出より前面 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.result-box {
+  background: rgba(20, 20, 20, 0.9);
+  padding: 40px 60px;
+  border-radius: 16px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.result-message {
+  font-size: 36px;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 30px;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.7);
+}
+
+.result-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.result-buttons button {
+  width: 100%;
+}
+
+/* 汎用確認モーダル（window.confirm()の代わりにゲーム内デザインで確認を挟む） */
+.confirm-modal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 80; /* メニューパネル(17)やresultScreen(60)より前面 */
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-modal.show {
+  display: flex;
+}
+
+.confirm-box {
+  background: rgba(20, 20, 20, 0.9);
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  max-width: 420px;
+}
+
+.confirm-message {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.name-edit-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  margin-bottom: 24px;
+  font-size: 18px;
+  text-align: center;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.name-edit-input:focus {
+  outline: none;
+  border-color: #ffcc00;
+}
+
+.confirm-buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+
+.confirm-buttons button {
+  min-width: 120px;
+}
+
+/*　バトル画面のcssここまで　*/

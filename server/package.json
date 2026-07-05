@@ -1,0 +1,13 @@
+{
+  "name": "zokujan-online-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "じゃんけん×属性バトルゲームのオンライン対戦用ルーム中継サーバー",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5"
+  }
+}
