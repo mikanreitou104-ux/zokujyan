@@ -674,6 +674,9 @@ function enterOnlineAttributeSelect() {
   document.getElementById("cpu-attr-select-title").textContent = "オンライン対戦の属性を選択";
   renderAttrCards("cpu-attr-select-list");
   showScreen("screen-cpu-attr-select");
+  // CPU戦の属性選択画面と共用しているため、CPU戦の入口と同じ背景クラスをここでも付ける
+  // (btn-mode-cpuのクリックハンドラでのみ付与していたため、オンライン経由だと真っ白になっていた)
+  document.getElementById("screen-cpu-attr-select").classList.add("bg-cpu-attr");
 }
 
 // サーバーへの接続は初回のみ行い、以降は使い回す
@@ -721,6 +724,13 @@ function connectOnlineSocket() {
     showConfirmModal("相手が退出しました。モード選択へ戻ります。", () => {
       showScreen("screen-mode");
     });
+  });
+
+  // 相手が降参した場合、こちらは勝利扱いにする(BGM切り替え・状態リセットは
+  // 通常の決着時と同じhandleCpuDefeated()→endBattle()の流れにそのまま乗せる)
+  onlineSocket.on("opponentSurrendered", () => {
+    cpuState.hp = 0;
+    handleCpuDefeated();
   });
 
   return onlineSocket;
@@ -2352,6 +2362,9 @@ document.getElementById("battle-menu-restart").addEventListener("click", () => {
 document.getElementById("battle-menu-surrender").addEventListener("click", () => {
   closeBattleMenu();
   showConfirmModal("降参しますか？この戦闘は敗北扱いになります。", () => {
+    if (battleContext.mode === "online" && onlineSocket) {
+      onlineSocket.emit("surrender");
+    }
     playerState.hp = 0;
     handlePlayerDefeated();
   });

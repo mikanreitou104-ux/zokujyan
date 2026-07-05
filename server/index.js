@@ -113,6 +113,15 @@ io.on("connection", (socket) => {
     room.hands = {};
   });
 
+  // 降参：自分側はローカルで処理済みなので、相手にだけ知らせる(相手はこれを勝利として扱う)
+  socket.on("surrender", () => {
+    const code = socket.data.roomCode;
+    const room = rooms[code];
+    if (!room) return;
+    const opponentId = getOpponentSocketId(room, socket.id);
+    if (opponentId) io.to(opponentId).emit("opponentSurrendered");
+  });
+
   // 決着後、同じルームでもう一度戦うためのリセット(コードを新しく発行し直さなくてよいようにする)。
   // chooseAttribute/playHandと同様、両者が要求してから初めてリセットする
   socket.on("playAgain", () => {
