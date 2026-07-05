@@ -103,11 +103,23 @@ io.on("connection", (socket) => {
     room.hands[socket.id] = hand;
     if (Object.keys(room.hands).length < 2) return;
 
+    // 属性ロジックにはギャンブラー/マジシャンのようにMath.random()を使う分岐があり、
+    // 両クライアントがそれぞれ自分のブラウザで独立に乱数を引くとダメージ等が食い違ってしまう。
+    // そのため各プレイヤーごとに乱数シードをここで1つずつ発行し、「自分用」「相手用」として両者に配る。
+    // クライアント側は各プレイヤーの行動由来の乱数を必ず対応するシードから引き直すことで、
+    // 実行順(勝敗判定やパワー消費処理の分岐順)に関係なく両者の計算結果が一致するようにしている。
+    const seeds = {};
+    room.players.forEach((playerId) => {
+      seeds[playerId] = Math.floor(Math.random() * 2 ** 31);
+    });
+
     room.players.forEach((playerId) => {
       const opponentId = getOpponentSocketId(room, playerId);
       io.to(playerId).emit("roundResult", {
         yourHand: room.hands[playerId],
-        opponentHand: room.hands[opponentId]
+        opponentHand: room.hands[opponentId],
+        yourSeed: seeds[playerId],
+        opponentSeed: seeds[opponentId]
       });
     });
     room.hands = {};

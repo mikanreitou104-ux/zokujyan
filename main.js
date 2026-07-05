@@ -656,6 +656,35 @@ let onlineSocket = null;
 let onlineOpponentHandBuffer = null;   // roundResultが先に届いた場合に一時保持する
 let onlineOpponentHandCallback = null; // startJankenScene側が先に待ち構えている場合のコールバック
 
+// シード付き疑似乱数生成器(mulberry32)。同じseedを与えれば両クライアントで同一の乱数列を再現できる
+function mulberry32(seed) {
+  return function () {
+    seed |= 0;
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// オンライン対戦中、そのラウンドだけ有効な「自分側」「相手側」の乱数生成器。
+// ギャンブラーのダイス目・確変抽選、マジシャンの効果抽選などは通常Math.random()を使うが、
+// オンライン対戦では両クライアントが同じ入力を独立に計算するため、素のMath.random()だと
+// 双方で異なる結果になってしまう(実際に「ダメージが食い違う」バグとして発生した)。
+// サーバーがラウンドごとに配布するシードを使い、battleRandom()経由で決定論的な値に差し替える。
+let onlineMyRoundRng = null;
+let onlineOpponentRoundRng = null;
+
+// 属性ロジック内でMath.random()の代わりに呼ぶ。actingStateは実際に行動している側のstate
+// (playerState/cpuStateのどちらか)。オンライン対戦中でなければ通常のMath.random()にフォールバックする。
+// actingState===playerStateかどうかで判定するのは、オンライン対戦ではplayer/cpuの役割が
+// クライアントごとに入れ替わる(自分が必ずplayerState)ため、実行順に関係なく
+// 「同じ人の行動」には常に同じシード由来の乱数を割り当てられるようにするため
+function battleRandom(actingState) {
+  if (!onlineMyRoundRng) return Math.random();
+  return actingState === playerState ? onlineMyRoundRng() : onlineOpponentRoundRng();
+}
+
 function showOnlineWaiting(message, roomCode) {
   document.getElementById("onlineWaitingMessage").textContent = message;
   const codeBlock = document.getElementById("onlineWaitingCodeBlock");
@@ -706,13 +735,14 @@ function connectOnlineSocket() {
     beginVersusBattle("online", opponentAttribute, "./images/enemy/mizusra.png");
   });
 
-  onlineSocket.on("roundResult", ({ opponentHand }) => {
+  onlineSocket.on("roundResult", ({ opponentHand, yourSeed, opponentSeed }) => {
+    const payload = { opponentHand, yourSeed, opponentSeed };
     if (onlineOpponentHandCallback) {
       const cb = onlineOpponentHandCallback;
       onlineOpponentHandCallback = null;
-      cb(opponentHand);
+      cb(payload);
     } else {
-      onlineOpponentHandBuffer = opponentHand;
+      onlineOpponentHandBuffer = payload;
     }
   });
 
@@ -722,7 +752,9 @@ function connectOnlineSocket() {
 
   onlineSocket.on("opponentLeft", () => {
     showConfirmModal("相手が退出しました。モード選択へ戻ります。", () => {
-      showScreen("screen-mode");
+      // showScreen()だけだとBGMの切り替えや結果画面・演出のリセットが行われず、
+      // 戦闘BGMが鳴りっぱなしになるバグがあったため、通常の離脱処理と同じexitBattleToScreen()に統一する
+      exitBattleToScreen("screen-mode");
     });
   });
 
@@ -740,9 +772,9 @@ function connectOnlineSocket() {
 // まだなら届いた瞬間にcallbackを呼ぶ(ネットワーク遅延を吸収するため)
 function resolveOnlineOpponentHand(callback) {
   if (onlineOpponentHandBuffer !== null) {
-    const hand = onlineOpponentHandBuffer;
+    const payload = onlineOpponentHandBuffer;
     onlineOpponentHandBuffer = null;
-    callback(hand);
+    callback(payload);
   } else {
     onlineOpponentHandCallback = callback;
   }
@@ -1640,6 +1672,10 @@ function startStoryEnemy() {
   document.getElementById("winLayer").style.opacity = 0;
   resetBattleEffectsUI();
   trackAttributePlay(playerAttribute);
+  // 前回オンライン対戦のシード付き乱数が残っていると、ストーリーモードでもbattleRandom()が
+  // 誤ってそれを使ってしまうため、通常のMath.random()に戻す
+  onlineMyRoundRng = null;
+  onlineOpponentRoundRng = null;
 
   const stage = STAGE_CATALOG[battleContext.stageId];
   const enemy = stage.enemies[battleContext.enemyIndex];
@@ -1823,12 +1859,12 @@ function canUsePower(attribute, state, cost) {
 }
 
 // ギャンブラーのダイスロールダメージ（消費量1〜3に応じてダイス数が変わり、3以上は+5される）
-function rollGamblerDamage(stacks) {
+function rollGamblerDamage(stacks, actingState) {
     if (stacks <= 0) return 0;
     const diceCount = Math.min(stacks, 3);
     let total = 0;
     for (let i = 0; i < diceCount; i++) {
-        total += Math.floor(Math.random() * 5) + 1; // 1〜5のダイス
+        total += Math.floor(battleRandom(actingState) * 5) + 1; // 1〜5のダイス
     }
     if (stacks >= 3) total += 5;
     return total;
@@ -2633,6 +2669,12 @@ if (btnCpuAttrConfirmBack) {
 function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
   battleContext.mode = mode;
 
+  // 前回オンライン対戦で使ったシード付き乱数が残っていると、CPU戦でもbattleRandom()が
+  // それを誤って使ってしまう(オンライン対戦なら「ぽん！」のタイミングで必ず再シードされるので、
+  // ここでnullに戻しておいても支障はない)
+  onlineMyRoundRng = null;
+  onlineOpponentRoundRng = null;
+
   if (!playerAttribute) {
     playerAttribute = "fire"; // デフォルト（何でもいい）
   }
@@ -2995,10 +3037,10 @@ const ATTR_LOGIC = {
       if (hand !== 0 || !usedPower) return null;
       // 確変中は消費量に関わらず最強の式(3d5+5)固定、それ以外は消費量に応じたダイス
       const stacks = attackerState.gamblerKakuhenTurns > 0 ? 3 : powerCost;
-      return rollGamblerDamage(stacks);
+      return rollGamblerDamage(stacks, attackerState);
     },
     onPowerUse(player) {
-      if (Math.random() < 0.25) {
+      if (battleRandom(player) < 0.25) {
         player.gamblerKakuhenTurns = (player.gamblerKakuhenTurns || 0) + 4;
       }
     },
@@ -3020,7 +3062,7 @@ const ATTR_LOGIC = {
     },
     onPowerUse(player) {
       // パワー消費のたびに3つの効果からランダムに1つ発動
-      const roll = Math.floor(Math.random() * 3);
+      const roll = Math.floor(battleRandom(player) * 3);
       if (roll === 0) {
         player.magicianAtkBonus++; // 永続攻撃力+1（上限なし）
       } else if (roll === 1) {
@@ -3305,7 +3347,11 @@ function startJankenScene(playerHand) {
     if (battleContext.mode === "online") {
       // オンライン対戦：相手の手は既にcommitHand()で送信済みのroundResultから取得する
       // (相手の応答がまだ届いていなければ、届いた瞬間にこのコールバックが呼ばれる)
-      resolveOnlineOpponentHand((cpuHand) => {
+      resolveOnlineOpponentHand(({ opponentHand: cpuHand, yourSeed, opponentSeed }) => {
+        // このラウンドの乱数を両クライアントで一致させるため、battleTurn()を呼ぶ前に必ずシードし直す
+        onlineMyRoundRng = mulberry32(yourSeed);
+        onlineOpponentRoundRng = mulberry32(opponentSeed);
+
         playerCard.src = `./images/hands/${handImg[playerHand]}.png`;
         cpuCard.src = `./images/hands/${handImg[cpuHand]}.png`;
         battleTurn(playerHand, cpuHand);
