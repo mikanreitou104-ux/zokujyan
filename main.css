@@ -1,3 +1,39 @@
+/* ===== デザイントークン =====
+   色・z-indexを直書きせずここに集約する。値を1箇所変えるだけで全画面に反映されるようにするための土台。
+   既存の見た目を壊さないよう、z-indexは元の数値のまま名前だけ付けている。 */
+:root {
+  --accent-gold: #ffd24d;
+  --power-color: #ffd24d;
+  --btn-primary-a: #ff4d4d;
+  --btn-primary-b: #b30000;
+  --btn-secondary-bg: rgba(255, 255, 255, 0.2);
+  --hp-color-default: #ff4444;
+  --heal-color: #4caf50;
+  --damage-color: #ff4444;
+
+  /* モードタイルの配色ルール：--tile-hueだけ変えれば新モードも同じ見た目の系統に乗る */
+  --tile-sat: 88%;
+  --tile-light-a: 62%;
+  --tile-light-b: 36%;
+
+  /* バトル画面のレイヤー順(z-index)。手札カード(5) < HUD(15) < メニュー(16-17) <
+     選択中カード/手アイコン(20) < 暗幕(50) < じゃんけん演出(55) < 結果テキスト(60) <
+     大技カットイン(65) < 開始演出(66) < 確認モーダル(80) < 常時最前面の戻るボタン(99999) */
+  --z-hand-cards: 5;
+  --z-hud-panel: 15;
+  --z-battle-menu: 16;
+  --z-battle-menu-panel: 17;
+  --z-hand-active: 20;
+  --z-dark-overlay: 50;
+  --z-janken-scene: 55;
+  --z-result: 60;
+  --z-attack-cutin: 65;
+  --z-battle-start-splash: 66;
+  --z-confirm-modal: 80;
+  --z-fixed-back-button: 99999;
+  --z-rotate-overlay: 1000000;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -45,7 +81,7 @@ body {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 1000000;
+  z-index: var(--z-rotate-overlay);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -540,15 +576,26 @@ body {
   font-size: 0;
 }
 
+/* モードタイルの配色は全て同じ式(145deg, --tile-sat, --tile-light-a→b)に乗せ、
+   --tile-hueだけを変えることで「ルールのある色分け」にする */
+.mode-btn.shop,
+.mode-btn.quest,
+.mode-btn.cpu,
+.mode-btn.mymenu {
+  background: linear-gradient(145deg,
+    hsl(var(--tile-hue) var(--tile-sat) var(--tile-light-a)),
+    hsl(var(--tile-hue) var(--tile-sat) var(--tile-light-b)));
+}
+
 /* ショップ → 緑系 */
 .mode-btn.shop {
-  background: linear-gradient(145deg, #4dff88, #00b34d);
+  --tile-hue: 150;
 }
 
 /* クエスト → 紫系 */
 .mode-btn.quest {
   position: relative; /* バッジ(.quest-badge)を右上に絶対配置するため */
-  background: linear-gradient(145deg, #b84dff, #6a00b3);
+  --tile-hue: 268;
 }
 
 /* 獲得可能なクエスト件数バッジ */
@@ -573,12 +620,12 @@ body {
 
 /* CPU → オレンジ系 */
 .mode-btn.cpu {
-  background: linear-gradient(145deg, #ffb84d, #cc7a00);
+  --tile-hue: 24;
 }
 
 /* MYメニュー → ピンク系 */
 .mode-btn.mymenu {
-  background: linear-gradient(145deg, #ff4da6, #b30059);
+  --tile-hue: 322;
 }
 
 /* ホバーで光る */
@@ -678,9 +725,12 @@ body {
 }
 
 
-/* MYメニューのタブ切り替え（.settings-tabは他画面（ショップ等）とも共有しているクラスなので、
-   表示/非表示の制御は専用の.mymenu-tab-panelだけに掛ける） */
-.mymenu-tab-nav {
+/* MYメニュー・ショップ共通のタブ切り替え見た目（.settings-tabは他画面とも共有しているクラスなので、
+   表示/非表示の制御は専用の.mymenu-tab-panel/.shop-tab-panelだけに掛ける。
+   MYメニューとショップは別々のクラスにして、片方のタブ切り替えがもう片方のactive状態に
+   影響しないようにしている） */
+.mymenu-tab-nav,
+.shop-tab-nav {
   display: flex;
   justify-content: center;
   gap: 10px;
@@ -689,7 +739,8 @@ body {
   width: 90%;
 }
 
-.mymenu-tab-btn {
+.mymenu-tab-btn,
+.shop-tab-btn {
   padding: 10px 22px;
   font-size: 15px;
   font-weight: 700;
@@ -701,21 +752,33 @@ body {
   transition: 0.2s;
 }
 
-.mymenu-tab-btn:hover {
+.mymenu-tab-btn:hover,
+.shop-tab-btn:hover {
   background: rgba(255,255,255,0.2);
 }
 
-.mymenu-tab-btn.active {
-  background: #ffd24d;
+.mymenu-tab-btn.active,
+.shop-tab-btn.active {
+  background: var(--accent-gold, #ffd24d);
   color: #222;
 }
 
-.mymenu-tab-panel {
+.mymenu-tab-panel,
+.shop-tab-panel {
   display: none;
 }
 
-.mymenu-tab-panel.active {
+.mymenu-tab-panel.active,
+.shop-tab-panel.active {
   display: block;
+}
+
+/* ショップはスキン/アイコンの種類が今後増えていく想定なので、タブの中身だけスクロールできるようにする
+   (.screenがoverflow:hiddenなので、中身側で高さを区切ってoverflow-y:autoにする必要がある。
+   .icon-list-col/.quest-listと同じパターン) */
+.shop-tab-panel.active {
+  max-height: 700px;
+  overflow-y: auto;
 }
 
 .volume-control {
@@ -758,7 +821,7 @@ body {
 }
 
 .hand-input-mode-btn.active {
-  background: #ffd24d;
+  background: var(--accent-gold, #ffd24d);
   color: #222;
 }
 
@@ -776,6 +839,13 @@ body {
   color: #fff;
   padding-top: 40px;
   box-sizing: border-box;
+}
+
+.story-attr-unlock {
+  color: #ffd54a;
+  font-weight: 900;
+  font-size: 20px;
+  text-shadow: 0 0 12px rgba(255, 213, 74, 0.7);
 }
 
 .coins-display {
@@ -874,12 +944,12 @@ body {
 }
 
 .skin-card .skin-status {
-  font-size: 13px;
+  font-size: 14px;
   opacity: 0.85;
 }
 
 .skin-card.equipped {
-  outline: 2px solid #ffd24d;
+  outline: 2px solid var(--accent-gold, #ffd24d);
 }
 
 .skin-card.clickable {
@@ -940,15 +1010,15 @@ body {
 }
 
 .stage-card.cleared {
-  outline: 2px solid #ffd24d;
+  outline: 2px solid var(--accent-gold, #ffd24d);
 }
 
 .stage-cleared-badge {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
-  background: #ffd24d;
+  background: var(--accent-gold, #ffd24d);
   color: #402d00;
   white-space: nowrap;
 }
@@ -1121,7 +1191,7 @@ body {
   position: absolute;
   top: 32px;
   font-size: 14px;
-  color: #ffd24d;
+  color: var(--accent-gold, #ffd24d);
   white-space: nowrap;
 }
 
@@ -1159,7 +1229,7 @@ body {
   border-radius: 10px;
   background: #ff3333;
   color: #fff;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -1167,12 +1237,15 @@ body {
   position: absolute;
   top: 16px;
   left: 16px;
-  z-index: 99999;
+  z-index: var(--z-fixed-back-button);
   padding: 10px 14px;
   font-size: 16px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(145deg,#ff4da6,#b30059);
+  --tile-hue: 322;
+  background: linear-gradient(145deg,
+    hsl(var(--tile-hue) var(--tile-sat) var(--tile-light-a)),
+    hsl(var(--tile-hue) var(--tile-sat) var(--tile-light-b)));
   border: none;
   border-radius: 10px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.45);
@@ -1256,12 +1329,127 @@ body {
   gap: 20px;
 }
 
+/* ===== 戦闘前の読み物画面（VN風） ===== */
+#screen-story-read {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  cursor: pointer;
+}
+
+.vn-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-color: #1a1a1a;
+}
+
+.vn-portraits {
+  position: absolute;
+  bottom: 260px;
+  left: 0;
+  right: 0;
+  height: 640px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 40px;
+  pointer-events: none;
+}
+
+.vn-portrait {
+  max-height: 100%;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.5));
+  transition: filter 0.2s, opacity 0.2s;
+}
+
+.vn-portrait-left { align-self: flex-end; margin-right: auto; }
+.vn-portrait-right { align-self: flex-end; margin-left: auto; }
+
+.vn-portrait-dim {
+  opacity: 0.55;
+  filter: brightness(0.5) drop-shadow(0 10px 20px rgba(0,0,0,0.5));
+}
+
+.vn-title-card {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 40px;
+  font-weight: 900;
+  text-align: center;
+  text-shadow: 0 0 16px rgba(0,0,0,0.8);
+  padding: 40px;
+  box-sizing: border-box;
+}
+
+.vn-title-card.show {
+  display: flex;
+}
+
+.vn-dialogue-box {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: 40px;
+  min-height: 160px;
+  display: none;
+  flex-direction: column;
+  background: rgba(0,0,0,0.72);
+  border-radius: 14px;
+  padding: 26px 30px;
+  box-sizing: border-box;
+  color: #fff;
+}
+
+.vn-dialogue-box.show {
+  display: flex;
+}
+
+.vn-name-plate {
+  position: absolute;
+  top: -28px;
+  left: 24px;
+  padding: 6px 22px;
+  background: rgba(20,20,20,0.9);
+  border-radius: 10px 10px 0 0;
+  font-weight: 700;
+  font-size: 18px;
+  color: #6ec6ff;
+}
+
+.vn-dialogue-text {
+  white-space: pre-line;
+  font-size: 20px;
+  line-height: 1.7;
+  margin-top: 6px;
+}
+
+.vn-next-arrow {
+  position: absolute;
+  right: 24px;
+  bottom: 16px;
+  font-size: 16px;
+  color: #fff;
+  animation: vnArrowBlink 1.2s infinite;
+}
+
+@keyframes vnArrowBlink {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
 /* ボタンスタイル（既存と整合） */
 .primary-btn {
   padding: 14px 26px;
   font-size: 20px;
   font-weight: 700;
-  background: linear-gradient(145deg, #ff4d4d, #b30000);
+  background: linear-gradient(145deg, var(--btn-primary-a, #ff4d4d), var(--btn-primary-b, #b30000));
   border: none;
   border-radius: 10px;
   color: #fff;
@@ -1274,7 +1462,7 @@ body {
 .secondary-btn {
   padding: 12px 20px;
   font-size: 16px;
-  background: rgba(255,255,255,0.2);
+  background: var(--btn-secondary-bg, rgba(255,255,255,0.2));
   border: none;
   border-radius: 10px;
   color: #fff;
@@ -1290,7 +1478,9 @@ body {
 #screen-attr-select {
   padding: 40px;
   text-align: center;
-  background: linear-gradient(180deg, #700000, #300000);
+  background:
+    linear-gradient(180deg, rgba(112,0,0,0.55), rgba(48,0,0,0.55)),
+    url("images/ui/attr-bg.png") center/cover no-repeat;
   color: #fff;
   box-sizing: border-box;
 }
@@ -1308,20 +1498,25 @@ body {
   flex-wrap: wrap;
 }
 
+/* border/box-shadowの--attr-colorは、renderAttrCards()(main.js)がATTR_DATA[attr].colorから
+   カードのstyle属性に設定する。属性ごとの色を視覚的な差分にするための唯一の手がかりだった
+   画像アイコンに加えて、枠と光彩でも属性を判別できるようにする */
 .attr-card {
   width: 220px;
   padding: 20px;
   background: rgba(255,255,255,0.08);
+  border: 2px solid var(--attr-color, rgba(255,255,255,0.15));
   border-radius: 14px;
   cursor: pointer;
   transition: 0.2s;
-  box-shadow: 0 0 15px rgba(0,0,0,0.4);
+  box-shadow: 0 0 15px rgba(0,0,0,0.4), 0 0 10px var(--attr-color, transparent);
   box-sizing: border-box;
 }
 
 .attr-card:hover {
   transform: translateY(-6px);
   filter: brightness(1.2);
+  box-shadow: 0 0 15px rgba(0,0,0,0.4), 0 0 20px var(--attr-color, transparent);
 }
 
 .attr-card img {
@@ -1331,13 +1526,15 @@ body {
   margin-bottom: 10px;
 }
 
-/* 属性選択画面（ストーリー）：画面幅に関わらず必ず横5個で並べる
-   minmax(0, 1fr)にしないと、カード内の画像やテキストの最小サイズにグリッドの列幅が
-   引っ張られてはみ出す（blowout）ことがあるため、列の最小幅を0に固定しておく */
+/* 属性選択画面（ストーリー）：横4個ぶんのサイズを最小幅として指定し、auto-fitで
+   実際の列数を「解放済み属性の数」に応じて自動調整する。
+   最小幅(440px)を明示的な固定値にしているのでカード内容に押されて広がる
+   blowoutは起きない(1840px使用可能幅なら5個目は入らず必ず4列以下になる計算)。
+   序盤(属性3個解放)は3列に大きく広がり、終盤(15個解放)は4列×4行に収まる */
 #screen-attr-select .attr-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 14px 20px;
 }
 
 #screen-attr-select .attr-card {
@@ -1348,7 +1545,7 @@ body {
 
 #screen-attr-select .attr-card img {
   width: 100%;
-  max-width: 90px;
+  max-width: 104px;
   height: auto;
   aspect-ratio: 1 / 1;
   margin: 0 auto 10px;
@@ -1360,7 +1557,7 @@ body {
 }
 
 #screen-attr-select .attr-card p {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.4;
   margin: 0;
   overflow-wrap: break-word;
@@ -1437,14 +1634,16 @@ body {
   position: relative;
   padding: 40px;
   text-align: center;
+  /* box-sizingの指定漏れでpaddingが幅に上乗せされ、画面が実質2000px幅になっていた
+     (#screen-attr-selectには元々あった)。グリッドの右端がキャンバス外にはみ出す原因だったため追加 */
+  box-sizing: border-box;
 }
 
-/* 画面幅に関わらず必ず横5個で並べる（属性選択画面と同じ方針。
-   minmax(0, 1fr)でグリッドのはみ出し(blowout)を防ぐ） */
+/* 横4個ぶんのサイズを最小幅にしてauto-fitで並べる(属性選択画面と同じ方針・同じ理由) */
 #screen-cpu-attr-select .attr-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 14px 20px;
 }
 
 #screen-cpu-attr-select .attr-card {
@@ -1460,7 +1659,7 @@ body {
 
 #screen-cpu-attr-select .attr-card img {
   width: 100%;
-  max-width: 90px;
+  max-width: 104px;
   height: auto;
   aspect-ratio: 1 / 1;
   object-fit: contain;
@@ -1473,7 +1672,7 @@ body {
 }
 
 #screen-cpu-attr-select .attr-card p {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.4;
   margin: 0;
   overflow-wrap: break-word;
@@ -1484,7 +1683,9 @@ body {
 }
 
 .bg-cpu-attr {
-  background: linear-gradient(#1a1f3a, #0d0f1c); /* 好きな色に変更OK */
+  background:
+    linear-gradient(rgba(26,31,58,0.6), rgba(13,15,28,0.6)),
+    url("images/ui/attr-bg.png") center/cover no-repeat;
   background-size: cover;
 }
 
@@ -1530,7 +1731,7 @@ body {
   border: none;
   padding: 12px 24px;
   border-radius: 8px;
-  z-index: 16;
+  z-index: var(--z-battle-menu);
 }
 
 /* メニューの中身（音量調整・リスタート・降参） */
@@ -1538,7 +1739,7 @@ body {
   position: absolute;
   top: 76px;
   left: 20px;
-  z-index: 17;
+  z-index: var(--z-battle-menu-panel);
   display: none;
   flex-direction: column;
   gap: 14px;
@@ -1603,9 +1804,12 @@ body {
   margin: 6px 0;
 }
 
+/* HPバー：属性選択時にmain.jsが.player-hud/.cpu-hudへ--hp-colorを設定し、属性ごとの色で染める。
+   未設定時は既存どおり赤系のフォールバックになる */
 .bar div {
   height: 100%;
-  background: linear-gradient(90deg, #ff4444, #ff8888);
+  background: var(--hp-color-default, #ff4444);
+  background: linear-gradient(90deg, var(--hp-color-default, #ff4444), color-mix(in srgb, var(--hp-color-default, #ff4444) 55%, white));
   width: 100%;
 }
 
@@ -1613,7 +1817,7 @@ body {
 #cpuPowerBar {
   width: 0%;
   height: 100%;
-  background: #4af; /* 好きな色 */
+  background: var(--power-color, #ffd24d);
   transition: width 0.2s ease;
 }
 
@@ -1631,7 +1835,7 @@ body {
   transform: translateX(-50%);
   display: flex;
   gap: 24px;
-  z-index: 5;
+  z-index: var(--z-hand-cards);
 }
 
 .handcard-img{
@@ -1682,7 +1886,7 @@ body {
 .hand-card.dragging {
   cursor: grabbing;
   transition: none;
-  z-index: 20;
+  z-index: var(--z-hand-active);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
 }
 
@@ -1733,7 +1937,7 @@ body {
   width: 100%;
   height: 100%;
   display: none; /* ← 最初は非表示 */
-  z-index: 55; /* ← 手札カード(5)・darkOverlay(50)より前面に */
+  z-index: var(--z-janken-scene); /* ← 手札カード・darkOverlayより前面に */
 }
 /* プレイヤーのカード（下から飛んでくる） */
 .janken-card.player {
@@ -1791,7 +1995,7 @@ body {
   transform: translate(-50%, -50%);
   width: 170px;
   height: 170px;
-  z-index: 20;
+  z-index: var(--z-hand-active);
   text-align: center;
 }
 
@@ -1802,7 +2006,7 @@ body {
   transform: translate(-50%, -50%);
   width: 170px;
   height: 170px;
-  z-index: 20;
+  z-index: var(--z-hand-active);
   text-align: center;
 }
 
@@ -1841,7 +2045,7 @@ body {
   pointer-events: none;        /* ← クリックを邪魔しない */
   opacity: 0;
   transition: opacity 0.3s ease;
-  z-index: 50;                 /* ← じゃんけん演出より下、戦闘画面より上 */
+  z-index: var(--z-dark-overlay); /* ← じゃんけん演出より下、戦闘画面より上 */
 }
 
 #darkOverlay.show {
@@ -1921,7 +2125,7 @@ body {
 
 .cpu-damage-number {
   font-size: 48px;
-  color: #ff4444;
+  color: var(--damage-color, #ff4444);
   font-weight: bold;
   animation: cpuDamagePop 0.6s ease-out forwards;
 }
@@ -1944,14 +2148,14 @@ body {
 
 .player-damage-number {
   font-size: 40px;
-  color: #ff4444;
+  color: var(--damage-color, #ff4444);
   font-weight: bold;
   animation: cpuDamagePop 0.6s ease-out forwards;
 }
 
 /* 回復表示（吸血・マジシャンなど）は緑色の"+N"にする */
 .heal-number {
-  color: #4caf50;
+  color: var(--heal-color, #4caf50);
 }
 
 /* じゃんけんの結果（WIN!/LOSE!/DRAW!）を画面中央に大きく出す演出 */
@@ -1967,7 +2171,7 @@ body {
   text-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
   opacity: 0;
   pointer-events: none;
-  z-index: 60;
+  z-index: var(--z-result);
 }
 
 .big-result-text.show {
@@ -2003,7 +2207,7 @@ body {
   box-shadow: 0 0 40px rgba(255, 60, 0, 0.7);
   opacity: 0;
   pointer-events: none;
-  z-index: 65;
+  z-index: var(--z-attack-cutin);
 }
 
 .big-attack-cutin.show {
@@ -2042,6 +2246,101 @@ body {
   100% { left: 120%; opacity: 0; }
 }
 
+/* 戦闘開始演出：属性確認画面→戦闘画面の切り替え直後に一瞬「属性 VS 属性」を見せる */
+.battle-start-splash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 60px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: var(--z-battle-start-splash);
+}
+
+.battle-start-splash .battle-start-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+}
+
+.battle-start-splash .battle-start-icon {
+  width: 160px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: #222;
+  border: 4px solid #fff;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+}
+
+.battle-start-splash .battle-start-name {
+  font-size: 32px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+  letter-spacing: 2px;
+}
+
+.battle-start-splash .battle-start-vs {
+  font-size: 72px;
+  font-weight: 900;
+  font-style: italic;
+  color: #ffd400;
+  text-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 212, 0, 0.6);
+  opacity: 0;
+  transform: scale(2);
+}
+
+.battle-start-splash.show {
+  animation: battleStartFade 1s ease-out forwards;
+}
+
+.battle-start-splash.show .battle-start-player {
+  animation: battleStartSlideInLeft 1s ease-out forwards;
+}
+
+.battle-start-splash.show .battle-start-cpu {
+  animation: battleStartSlideInRight 1s ease-out forwards;
+}
+
+.battle-start-splash.show .battle-start-vs {
+  animation: battleStartVsPop 1s ease-out forwards;
+}
+
+@keyframes battleStartFade {
+  0%   { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes battleStartSlideInLeft {
+  0%   { transform: translateX(-160px); opacity: 0; }
+  25%  { transform: translateX(0); opacity: 1; }
+  85%  { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(0); opacity: 0; }
+}
+
+@keyframes battleStartSlideInRight {
+  0%   { transform: translateX(160px); opacity: 0; }
+  25%  { transform: translateX(0); opacity: 1; }
+  85%  { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(0); opacity: 0; }
+}
+
+@keyframes battleStartVsPop {
+  0%   { transform: scale(2); opacity: 0; }
+  25%  { transform: scale(1); opacity: 1; }
+  85%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
 /* 10ダメージ以上が実際に着弾した瞬間の大きめフラッシュ・シェイク */
 .damage-flash.big-impact {
   background: radial-gradient(circle, rgba(255, 220, 120, 0.9) 0%, rgba(255, 70, 0, 0.55) 45%, rgba(0, 0, 0, 0) 80%);
@@ -2071,7 +2370,7 @@ body {
 /* ===== プレイヤー / CPU HUDパネル（属性アイコン＋HP/パワー＋属性固有ステータスを1箇所に集約） ===== */
 .hud-panel {
   position: absolute;
-  z-index: 15;
+  z-index: var(--z-hud-panel);
   width: 400px;
   padding: 18px;
   background: rgba(0, 0, 0, 0.5);
@@ -2110,6 +2409,8 @@ body {
   font-weight: bold;
 }
 
+/* --attr-color/--hp-color-defaultはmain.jsのapplyAttributeVisuals()が
+   .player-hud/.cpu-hud(親要素)に設定し、こことHPバー(.bar div)の両方に反映される */
 .player-attr-box,
 .cpu-attr-box {
   width: 78px;
@@ -2118,7 +2419,7 @@ body {
   background: rgba(0, 0, 0, 0.45); /* 半透明の黒 */
   border-radius: 12px;             /* 角丸 */
   backdrop-filter: blur(4px);      /* ぼかしで高級感 */
-  box-shadow: 0 0 8px rgba(0,0,0,0.4); /* 影で浮かせる */
+  box-shadow: 0 0 8px rgba(0,0,0,0.4), 0 0 14px var(--attr-color, transparent); /* 影＋属性色の光彩 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2200,7 +2501,7 @@ body {
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.75);
-  z-index: 60; /* darkOverlay(50)やじゃんけん演出より前面 */
+  z-index: var(--z-result); /* darkOverlayやじゃんけん演出より前面 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2240,7 +2541,7 @@ body {
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.75);
-  z-index: 80; /* メニューパネル(17)やresultScreen(60)より前面 */
+  z-index: var(--z-confirm-modal); /* メニューパネルやresultScreenより前面 */
   display: none;
   align-items: center;
   justify-content: center;

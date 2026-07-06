@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ゾクジャン</title>
+  <!-- main.cssがfont-family: "Noto Sans JP"を指定しているが、読み込みがなくOS標準フォントに
+       フォールバックしていたため、実際にWebフォントを読み込む -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="main.css" />
 </head>
 <body>
@@ -13,14 +18,17 @@
   <audio id="se-hover" src="sounds/se/hover.mp3"></audio>
   <audio id="se-cancel" src="sounds/se/cancel.mp3"></audio>
   <audio id="se-HoverCard" src="./sounds/se/cardhover.mp3"></audio>
-  <audio id="bgm-title" src="sounds/bgm/title.mp3" loop></audio>
+  <audio id="bgm-title" src="sounds/bgm/fantaji-.mp3" loop></audio>
   <audio id="bgm-mode" src="sounds/bgm/mode.mp3" loop></audio>
   <audio id="bgm-cpu-battle" src="sounds/bgm/cpu-battle.mp3" loop></audio>
+  <audio id="bgm-story" src="sounds/bgm/旅の始まり.mp3" loop></audio>
   <audio id="se-card-fly" src="./sounds/se/card_fly.mp3"></audio>
   <audio id="se-damage" src="./sounds/se/damage.mp3"></audio>
   <audio id="se-gekiha" src="./sounds/se/gekiha.mp3"></audio>
   <!-- TODO: 10以上ダメージ着弾時の「どごーん」SE。音声ファイルが用意でき次第このsrcを差し替える -->
   <audio id="se-big-impact" src="./sounds/se/big_impact.mp3"></audio>
+  <audio id="se-coin" src="./sounds/se/koinn.mp3"></audio>
+  <audio id="se-purchase" src="./sounds/se/kounyuu.mp3"></audio>
 
   <!-- 縦向き画面のときにゲーム全体を覆って回転を促すオーバーレイ。
        #game-canvas(拡縮対象)の外に置き、実デバイス画面全体を確実に覆えるようにする -->
@@ -172,17 +180,24 @@
 
     <div class="coins-display">所持コイン：<span id="shopCoinsValue">0</span></div>
 
-    <div class="settings-tab">
+    <!-- タブ切り替え：一度に1つのパネルだけ表示する(今後スキン/アイコン種類が増えても対応できるように) -->
+    <div class="shop-tab-nav">
+      <button class="shop-tab-btn active" data-shop-tab-target="shop-skin-tab">カードスキン</button>
+      <button class="shop-tab-btn" data-shop-tab-target="shop-icon-tab">アイコン画像</button>
+      <button class="shop-tab-btn" data-shop-tab-target="shop-iconbg-tab">アイコン背景</button>
+    </div>
+
+    <div id="shop-skin-tab" class="settings-tab shop-tab-panel active">
       <h2>カードスキン</h2>
       <div id="shop-skin-list" class="skin-list"></div>
     </div>
 
-    <div class="settings-tab">
+    <div id="shop-icon-tab" class="settings-tab shop-tab-panel">
       <h2>アイコン画像</h2>
       <div id="shop-icon-list" class="skin-list"></div>
     </div>
 
-    <div class="settings-tab">
+    <div id="shop-iconbg-tab" class="settings-tab shop-tab-panel">
       <h2>アイコン背景</h2>
       <div id="shop-iconbg-list" class="skin-list"></div>
     </div>
@@ -233,9 +248,14 @@
       </div>
 
       <div class="profile-section">
-        <h3>オンライン</h3>
+        <h3>じゃんけん統計(CPU戦・ストーリー・オンライン合算)</h3>
         <div id="profileHandStats" class="profile-hand-stats"></div>
         <p>じゃんけんの勝率：<span id="profileOverallWinRate"></span></p>
+      </div>
+
+      <div class="profile-section">
+        <h3>オンライン対戦成績</h3>
+        <p id="profileOnlineWinRate"></p>
       </div>
 
       <div class="profile-section">
@@ -374,6 +394,18 @@
   </div>
 </section>
 
+<!-- 戦闘前の読み物画面（ステージ内の任意の敵にstoryが設定されている時だけ挟む、VN風） -->
+<section id="screen-story-read" class="screen">
+  <div class="vn-bg" id="vn-bg"></div>
+  <div class="vn-portraits" id="vn-portraits"></div>
+  <div class="vn-title-card" id="vn-title-card"></div>
+  <div class="vn-dialogue-box" id="vn-dialogue-box">
+    <div class="vn-name-plate" id="vn-name-plate"></div>
+    <div class="vn-dialogue-text" id="vn-dialogue-text"></div>
+    <div class="vn-next-arrow">▼</div>
+  </div>
+</section>
+
 <!-- アイテムカード選択画面 -->
 <section id="screen-item-card-select" class="screen">
   <h1 class="mymenu-title">アイテムカードを選択</h1>
@@ -427,6 +459,19 @@
 <div id="bigAttackCutIn" class="big-attack-cutin">
   <img id="cutinIcon" class="cutin-icon" src="" alt="">
   <span class="cutin-text"></span>
+</div>
+
+<!-- 戦闘開始演出：属性確認画面→戦闘画面に切り替わった直後に一瞬だけ「属性 VS 属性」を見せる -->
+<div id="battleStartSplash" class="battle-start-splash">
+  <div class="battle-start-side battle-start-player">
+    <img id="battleStartPlayerIcon" class="battle-start-icon" src="" alt="">
+    <span id="battleStartPlayerName" class="battle-start-name"></span>
+  </div>
+  <span class="battle-start-vs">VS</span>
+  <div class="battle-start-side battle-start-cpu">
+    <img id="battleStartCpuIcon" class="battle-start-icon" src="" alt="">
+    <span id="battleStartCpuName" class="battle-start-name"></span>
+  </div>
 </div>
 
   <!-- 左上：メニュー -->
@@ -581,6 +626,6 @@
 
   <!-- オンライン対戦用。実際に接続するサーバーのURLはmain.jsのgetOnlineServerUrl()で指定する -->
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <script src="main.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>

@@ -1,3 +1,69 @@
+import {
+  ATTR_BASE_STATUS,
+  ATTR_DATA,
+  ATTR_LOGIC,
+  setBattleRandom,
+  getRandomAttribute,
+  initAttribute,
+  getPowerCost,
+  canUsePower,
+  rollGamblerDamage,
+  baseDamage,
+  attributeBonus,
+  damageReduction,
+  roguelikeBonus,
+  calcDamage,
+  previewAttackDamage,
+  applyPoison,
+  tickPoison,
+  tickGamblerKakuhen
+} from "./js/attributes.js";
+
+import {
+  saveData,
+  cloneDefaultSaveData,
+  saveSaveData,
+  getStatByPath,
+  incrementStat,
+  trackAttributePlay,
+  isAttributeUnlocked,
+  isStageCleared,
+  markStageCleared,
+  addCoins,
+  spendCoins,
+  unlockAttribute,
+  ownSkin,
+  equipSkin,
+  ownIconBg,
+  equipIconBg,
+  ownIcon,
+  equipIcon,
+  setUICallbacks
+} from "./js/save-data.js";
+
+import {
+  QUEST_CATEGORIES,
+  QUEST_CATALOG,
+  getQuestGroupKey,
+  getQuestLinesForCategory,
+  updateQuestProgress,
+  getQuestProgress,
+  isQuestClaimable,
+  claimQuestReward,
+  countClaimableQuests,
+  setQuestBadgeCallback
+} from "./js/quests.js";
+
+import {
+  battleTurn,
+  resetBattleCounters,
+  setBattleCallbacks
+} from "./js/battle.js";
+
+import { STAGE_CATALOG, ITEM_CARD_CATALOG } from "./js/story-catalog.js";
+
+import { SKIN_CATALOG, ICON_BG_CATALOG, ICON_CATALOG } from "./js/shop-catalog.js";
+
 // ===== 固定デザイン解像度(1920x1080) → 実ウィンドウへのレターボックス拡縮 =====
 const GAME_WIDTH = 1920;
 const GAME_HEIGHT = 1080;
@@ -14,279 +80,39 @@ window.addEventListener("resize", updateGameScale);
 document.addEventListener("fullscreenchange", updateGameScale);
 window.addEventListener("orientationchange", updateGameScale);
 
-const ATTR_BASE_STATUS = {
-  fire: {
-    maxHp: 25,
-    maxPower: 3
-  },
-  thunder: {
-    maxHp: 30,
-    maxPower: 4
-  },
-  ice: {
-    maxHp: 30,
-    maxPower: 3
-  },
-  stone: {
-    maxHp: 35,
-    maxPower: 3
-  },
-  water: {
-    maxHp: 30,
-    maxPower: 4
-  },
-  wind: {
-    maxHp: 25,
-    maxPower: 3
-  },
-  fighter: {
-    maxHp: 25,
-    maxPower: 5
-  },
-  poison: {
-    maxHp: 20,
-    maxPower: 3
-  },
-  vampire: {
-    maxHp: 25,
-    maxPower: 3
-  },
-  doppel: {
-    maxHp: 25,
-    maxPower: 3
-  },
-  curse: {
-    maxHp: 25,
-    maxPower: 3
-  },
-  cannon: {
-    maxHp: 25,
-    maxPower: 20
-  },
-  gambler: {
-    maxHp: 25,
-    maxPower: 3
-  },
-  magician: {
-    maxHp: 25,
-    maxPower: 3
-  },
-  berserker: {
-    maxHp: 80,
-    maxPower: 3
-  },
-
-};
-
-// ===== セーブデータ基盤 =====
-// ショップ/MYメニュー/クエスト/ストーリーモードが共有するプレイヤーの永続データ
-const SAVE_DATA_KEY = "saveData";
-
-const DEFAULT_SAVE_DATA = {
-  version: 1,
-  profileName: "ユーザー",     // プロフィール表示名(モード選択左上・プロフィール画面)。プレイヤーが変更可能
-  coins: 0,
-  unlockedAttributes: [],      // 基本3属性(fire/thunder/ice)は含めない。ショップ購入分のみ
-  ownedSkins: ["default"],
-  equippedSkin: "default",
-  ownedIconBgs: ["red", "blue", "green"], // カットイン等のアイコン背景。初期3色は購入不要で所持
-  equippedIconBg: "red",
-  ownedIcons: ["akasra"], // カットイン等で使うアイコン画像本体。初期は赤スライムのみ所持
-  equippedIcon: "akasra",
-  statBoosts: {                // ストーリーモード用の初期ステータス強化（ショップで購入）
-    hp: 0,
-    power: 0
-  },
-  quests: {
-    lastDailyReset: null,      // "YYYY-MM-DD"。デイリークエスト実装時に使用
-    mainProgress: {},          // { questId: { completed, progress } }
-    dailyProgress: {}
-  },
-  stats: {
-    cpuBattlesPlayed: 0,
-    cpuBattlesWon: 0,
-    drawCount: 0,
-    roundWinCount: 0,       // じゃんけん1回ごとの勝利数(プロフィール画面の「じゃんけんの勝率」用、cpuBattlesWonとは別)
-    roundLossCount: 0,      // じゃんけん1回ごとの敗北数
-    handWinCount: { rock: 0, paper: 0, scissors: 0 }, // 各手を出して勝利した回数(手ごとの勝率計算用)
-    totalDamageDealt: 0,
-    totalDamageTaken: 0,
-    highDamageHits: 0,      // 1回で10以上のダメージを与えた回数
-    freezeCount: 0,         // 氷属性で相手を凍結させた通算回数
-    poisonApplyCount: 0,    // 毒属性で相手に毒を付与した通算回数
-    curseApplyCount: 0,     // 呪術属性で相手に呪いを付与した通算回数
-    coinsEarnedTotal: 0,    // 使った分も含む生涯獲得コイン(所持コインのsaveData.coinsとは別)
-    shopPurchaseCount: 0,   // ショップで新規購入した回数(スキン/アイコン/属性など)
-    itemCardsCollected: 0,  // ストーリーモードでアイテムカードを取得した通算回数
-    attributesTriedCount: 0, // 1回以上戦ったことがある属性の種類数
-    attributesWonCount: 0,   // 1回以上勝利したことがある属性の種類数
-    handUseCount: { rock: 0, paper: 0, scissors: 0 },
-    // 属性キーはATTR_BASE_STATUSと同じ15種で初期化(このオブジェクトはATTR_BASE_STATUSの後で定義されるファイル位置なので参照可能)
-    winsByAttribute: Object.keys(ATTR_BASE_STATUS).reduce((o, k) => (o[k] = 0, o), {}),
-    damageByAttribute: Object.keys(ATTR_BASE_STATUS).reduce((o, k) => (o[k] = 0, o), {}),
-    attributePlayCount: Object.keys(ATTR_BASE_STATUS).reduce((o, k) => (o[k] = 0, o), {})
-  },
-  clearedStages: []            // クリア済みステージID一覧（ストーリーモード）
-};
-
-function cloneDefaultSaveData() {
-  return JSON.parse(JSON.stringify(DEFAULT_SAVE_DATA));
-}
-
-function loadSaveData() {
-  const raw = localStorage.getItem(SAVE_DATA_KEY);
-  if (!raw) return cloneDefaultSaveData();
-
-  try {
-    const parsed = JSON.parse(raw);
-    // 将来フィールドが増えても既存セーブが壊れないよう、デフォルトとマージする
-    return {
-      ...cloneDefaultSaveData(),
-      ...parsed,
-      statBoosts: { ...DEFAULT_SAVE_DATA.statBoosts, ...(parsed.statBoosts || {}) },
-      quests: { ...DEFAULT_SAVE_DATA.quests, ...(parsed.quests || {}) },
-      stats: { ...DEFAULT_SAVE_DATA.stats, ...(parsed.stats || {}) }
-    };
-  } catch (e) {
-    console.warn("セーブデータの読み込みに失敗したため初期化します", e);
-    return cloneDefaultSaveData();
-  }
-}
-
-function saveSaveData() {
-  localStorage.setItem(SAVE_DATA_KEY, JSON.stringify(saveData));
-}
-
-let saveData = loadSaveData();
-
-// "winsByAttribute.fire"のようなドット区切りパスでsaveData.statsの値を読み書きするヘルパー。
-// 大量の統計連動クエスト(QUEST_CATALOGのstatPath)を、個別にupdateQuestProgress()を呼ばずとも
-// この2関数だけで自動的に進捗させられるようにする。
-function getStatByPath(path) {
-  const value = path.split(".").reduce((obj, key) => (obj ? obj[key] : undefined), saveData.stats);
-  return value || 0;
-}
-
-function incrementStat(path, amount = 1) {
-  const keys = path.split(".");
-  let obj = saveData.stats;
-  for (let i = 0; i < keys.length - 1; i++) obj = obj[keys[i]];
-  const lastKey = keys[keys.length - 1];
-  obj[lastKey] = (obj[lastKey] || 0) + amount;
-  saveSaveData();
-  updateQuestClaimableBadge();
-}
-
-// 属性ごとの挑戦回数(attributePlayCount)を記録し、その属性で初めて戦った場合は
-// コンプリート系クエスト用のattributesTriedCountも合わせて増やす
-function trackAttributePlay(attr) {
-  if (getStatByPath(`attributePlayCount.${attr}`) === 0) {
-    incrementStat("attributesTriedCount", 1);
-  }
-  incrementStat(`attributePlayCount.${attr}`, 1);
-}
-
-function isAttributeUnlocked(attr) {
-  return ["fire", "thunder", "ice"].includes(attr) || saveData.unlockedAttributes.includes(attr);
-}
-
-function isStageCleared(stageId) {
-  return saveData.clearedStages.includes(stageId);
-}
-
-function markStageCleared(stageId) {
-  if (!saveData.clearedStages.includes(stageId)) {
-    saveData.clearedStages.push(stageId);
-    saveSaveData();
-  }
-}
-
 // 所持コイン表示を更新する(モード選択画面・クエスト画面など、.coins-value-displayを持つ要素全て)
 function updateModeCoinsDisplay() {
   document.querySelectorAll(".coins-value-display").forEach(el => {
     el.textContent = saveData.coins;
   });
 }
-
-function addCoins(amount) {
-  saveData.coins += amount;
-  saveData.stats.coinsEarnedTotal = (saveData.stats.coinsEarnedTotal || 0) + amount;
-  saveSaveData();
-  updateModeCoinsDisplay();
-  updateQuestClaimableBadge();
-}
-
-function spendCoins(amount) {
-  if (saveData.coins < amount) return false;
-  saveData.coins -= amount;
-  saveSaveData();
-  updateModeCoinsDisplay();
-  return true;
-}
-
-function unlockAttribute(attr) {
-  if (!saveData.unlockedAttributes.includes(attr)) {
-    saveData.unlockedAttributes.push(attr);
-    saveSaveData();
-    incrementStat("shopPurchaseCount");
-  }
-}
-
-function ownSkin(skinId) {
-  if (!saveData.ownedSkins.includes(skinId)) {
-    saveData.ownedSkins.push(skinId);
-    saveSaveData();
-    incrementStat("shopPurchaseCount");
-  }
-}
-
-function equipSkin(skinId) {
-  if (!saveData.ownedSkins.includes(skinId)) return false;
-  saveData.equippedSkin = skinId;
-  saveSaveData();
-  return true;
-}
-
-function ownIconBg(iconBgId) {
-  if (!saveData.ownedIconBgs.includes(iconBgId)) {
-    saveData.ownedIconBgs.push(iconBgId);
-    saveSaveData();
-    incrementStat("shopPurchaseCount");
-  }
-}
-
-function equipIconBg(iconBgId) {
-  if (!saveData.ownedIconBgs.includes(iconBgId)) return false;
-  saveData.equippedIconBg = iconBgId;
-  saveSaveData();
-  updateModeProfileDisplay();
-  return true;
-}
-
-function ownIcon(iconId) {
-  if (!saveData.ownedIcons.includes(iconId)) {
-    saveData.ownedIcons.push(iconId);
-    saveSaveData();
-    incrementStat("shopPurchaseCount");
-  }
-}
-
-function equipIcon(iconId) {
-  if (!saveData.ownedIcons.includes(iconId)) return false;
-  saveData.equippedIcon = iconId;
-  saveSaveData();
-  updateModeProfileDisplay();
-  return true;
-}
-// ===== セーブデータ基盤ここまで =====
+setUICallbacks({
+  onCoinsChanged: updateModeCoinsDisplay,
+  onQuestBadgeChanged: updateQuestClaimableBadge,
+  onProfileChanged: updateModeProfileDisplay
+});
+setQuestBadgeCallback(updateQuestClaimableBadge);
+setBattleCallbacks({
+  hideDarkOverlay,
+  renderPlayerHand,
+  renderCpuHand,
+  setResultText,
+  showBigResultText,
+  showDamageNumber,
+  playCpuDamageEffect,
+  playBigImpactEffect,
+  playDamageEffect,
+  handleCpuDefeated,
+  handlePlayerDefeated,
+  updateBattleUI,
+  setupPlayerStatusWindow,
+  setupCpuStatusWindow,
+  endJankenScene,
+  onRoundResult: recordOnlineRoundResult
+});
 
 // ===== ショップ / MYメニュー：カード裏スキン =====
-const SKIN_CATALOG = {
-  default: { name: "デフォルト", img: "./images/card-bg/defo.png", price: 0, isDefault: true },
-  skin1:   { name: "スキンA",   img: "./images/card-bg/1.png",   price: 30 },
-  skin2:   { name: "スキンB",   img: "./images/card-bg/2.png",   price: 50 },
-  skin3:   { name: "スキンC",   img: "./images/card-bg/3.png",   price: 80 },
-};
+// SKIN_CATALOGの定義はjs/shop-catalog.jsに切り出し済み(冒頭のimportを参照)。
 
 function getSkinStatus(skinId) {
   if (saveData.equippedSkin === skinId) return "equipped";
@@ -346,6 +172,7 @@ document.getElementById("shop-skin-list").addEventListener("click", (e) => {
   if (spendCoins(skin.price)) {
     ownSkin(skinId);
     renderShopSkinList();
+    playPurchaseSE();
   }
 });
 
@@ -363,6 +190,11 @@ if (btnShop) {
     renderShopSkinList();
     renderShopIconList();
     renderShopIconBgList();
+    // 前回開いた時のタブ状態が残らないよう、毎回「カードスキン」タブに戻す
+    document.querySelectorAll(".shop-tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".shop-tab-panel").forEach(p => p.classList.remove("active"));
+    document.querySelector(".shop-tab-btn").classList.add("active");
+    document.getElementById("shop-skin-tab").classList.add("active");
     showScreen("screen-shop");
   });
 }
@@ -376,16 +208,7 @@ if (btnShopBack) {
 // ===== ショップ / MYメニューここまで =====
 
 // ===== ショップ / MYメニュー：アイコン背景（カットイン演出等で使うプレイヤーアイコンの背景） =====
-// cssプロパティにはCSSのbackground値をそのまま入れる（単色でもグラデーションでも可）
-const ICON_BG_CATALOG = {
-  red:               { name: "赤",                     css: "#ff2d00", price: 0, isDefault: true },
-  blue:              { name: "青",                     css: "#2d6bff", price: 0, isDefault: true },
-  green:             { name: "緑",                     css: "#33cc55", price: 0, isDefault: true },
-  purple:            { name: "紫",                     css: "#a344ff", price: 40 },
-  cyan:              { name: "水色",                   css: "#33ccff", price: 40 },
-  blueCyanGradient:  { name: "青→水色グラデーション",   css: "linear-gradient(135deg, #2d6bff, #33ccff)", price: 70 },
-  redOrangeGradient: { name: "赤→オレンジグラデーション", css: "linear-gradient(135deg, #ff2d00, #ff9900)", price: 70 },
-};
+// ICON_BG_CATALOGの定義はjs/shop-catalog.jsに切り出し済み(冒頭のimportを参照)。
 
 function getIconBgStatus(iconBgId) {
   if (saveData.equippedIconBg === iconBgId) return "equipped";
@@ -445,6 +268,7 @@ document.getElementById("shop-iconbg-list").addEventListener("click", (e) => {
   if (spendCoins(iconBg.price)) {
     ownIconBg(iconBgId);
     renderShopIconBgList();
+    playPurchaseSE();
   }
 });
 
@@ -459,10 +283,7 @@ document.getElementById("mymenu-iconbg-list").addEventListener("click", (e) => {
 // ===== アイコン背景ここまで =====
 
 // ===== ショップ / MYメニュー：アイコン画像（カットイン演出等で使うプレイヤーアイコンの絵柄本体） =====
-const ICON_CATALOG = {
-  akasra:  { name: "赤スライム", img: "images/enemy/akasra.png",  price: 0, isDefault: true },
-  mizusra: { name: "青スライム", img: "images/enemy/mizusra.png", price: 30 },
-};
+// ICON_CATALOGの定義はjs/shop-catalog.jsに切り出し済み(冒頭のimportを参照)。
 
 function getIconStatus(iconId) {
   if (saveData.equippedIcon === iconId) return "equipped";
@@ -534,6 +355,7 @@ document.getElementById("shop-icon-list").addEventListener("click", (e) => {
   if (spendCoins(icon.price)) {
     ownIcon(iconId);
     renderShopIconList();
+    playPurchaseSE();
   }
 });
 
@@ -555,6 +377,24 @@ function getRoundWinRatePercent() {
   const wins = getStatByPath("roundWinCount");
   const losses = getStatByPath("roundLossCount");
   const draws = getStatByPath("drawCount");
+  const total = wins + losses + draws;
+  return total > 0 ? Math.round((wins / total) * 100) : 0;
+}
+
+// battle.js(setBattleCallbacks)から毎ターン呼ばれる。roundWinCount等はCPU/ストーリーも合算されるため、
+// オンライン対戦のみの勝率を分けて見たい場合はこちらのonline専用カウンタを使う
+function recordOnlineRoundResult(result) {
+  if (battleContext.mode !== "online") return;
+  if (result === "win") incrementStat("onlineRoundWinCount");
+  else if (result === "loss") incrementStat("onlineRoundLossCount");
+  else incrementStat("onlineDrawCount");
+}
+
+// オンライン対戦のみのじゃんけん勝率
+function getOnlineRoundWinRatePercent() {
+  const wins = getStatByPath("onlineRoundWinCount");
+  const losses = getStatByPath("onlineRoundLossCount");
+  const draws = getStatByPath("onlineDrawCount");
   const total = wins + losses + draws;
   return total > 0 ? Math.round((wins / total) * 100) : 0;
 }
@@ -601,6 +441,14 @@ function renderProfileScreen() {
     </div>
   `).join("");
   document.getElementById("profileOverallWinRate").textContent = `${getRoundWinRatePercent()}%`;
+
+  const onlineWins = getStatByPath("onlineRoundWinCount");
+  const onlineLosses = getStatByPath("onlineRoundLossCount");
+  const onlineDraws = getStatByPath("onlineDrawCount");
+  const onlineTotal = onlineWins + onlineLosses + onlineDraws;
+  document.getElementById("profileOnlineWinRate").textContent = onlineTotal > 0
+    ? `${onlineWins}勝${onlineLosses}敗${onlineDraws}分(勝率${getOnlineRoundWinRatePercent()}%)`
+    : "まだ対戦していません";
 
   const claimedQuestCount = Object.keys(QUEST_CATALOG).filter(id => {
     const record = saveData.quests.mainProgress[id];
@@ -684,6 +532,7 @@ function battleRandom(actingState) {
   if (!onlineMyRoundRng) return Math.random();
   return actingState === playerState ? onlineMyRoundRng() : onlineOpponentRoundRng();
 }
+setBattleRandom(battleRandom);
 
 function showOnlineWaiting(message, roomCode) {
   document.getElementById("onlineWaitingMessage").textContent = message;
@@ -813,262 +662,6 @@ document.getElementById("btn-online-waiting-cancel").addEventListener("click", (
 });
 // ===== オンライン対戦ここまで =====
 
-// ===== クエスト =====
-// 手動で条件を書く6種(1戦闘内の最大値やピーク値を見る特殊条件)に加え、
-// buildMilestoneQuests()でsaveData.statsの値をそのまま目標にする大量の段階クエストを生成する。
-// 生成クエストはstatPathを持ち、進捗はupdateQuestProgress()を個別に呼ばなくても
-// getQuestProgress()がsaveData.statsから直接読む(incrementStat()で増やすだけで自動反映)。
-//
-// name/descに属性名を使うクエストは、ATTR_DATA(属性の日本語名)がこのファイルの後方で定義されるため、
-// このオブジェクトの構築時点ではまだ参照できない。そのため文字列ではなく関数にして、
-// 実際に描画するrenderQuestList()の中で呼び出す(その頃にはATTR_DATAは初期化済み)。
-//
-// タブ分け・1本の進捗トラックにまとめる表示(2026-07-05)のため、同じstatPathを持つクエストは
-// 「1本の連続した段階」として扱う。QUEST_LINE_METAにその行の見出し(label)と所属タブ(category)を持たせる。
-const QUEST_LINE_META = {};
-
-function buildMilestoneQuests() {
-  const attrs = Object.keys(ATTR_BASE_STATUS);
-  const quests = {};
-
-  function registerLine(statPath, category, label) {
-    QUEST_LINE_META[statPath] = { category, label };
-  }
-  function addTier(id, statPath, target, reward, name, desc) {
-    quests[id] = { name, desc, target, reward, statPath };
-  }
-
-  // CPU戦プレイ回数(既存のpracticeMatters/bePreparedを補う追加段階)
-  registerLine("cpuBattlesPlayed", "cpuBattle", "CPU戦をプレイする");
-  [[10, 40], [30, 100], [50, 150], [75, 220], [100, 300], [150, 450], [200, 600], [300, 900]]
-    .forEach(([t, r]) => addTier(`battlesPlayed_${t}`, "cpuBattlesPlayed", t, r,
-      `百戦錬磨・${t}`, `CPU戦を${t}回遊ぶ`));
-
-  // CPU戦勝利数
-  registerLine("cpuBattlesWon", "cpuBattle", "CPU戦に勝利する");
-  [[5, 30], [10, 60], [20, 120], [30, 180], [50, 300], [75, 450], [100, 600], [150, 900], [200, 1200], [300, 1800]]
-    .forEach(([t, r]) => addTier(`battlesWon_${t}`, "cpuBattlesWon", t, r,
-      `勝利の階段・${t}`, `CPU戦に${t}回勝利する`));
-
-  // あいこ回数
-  registerLine("drawCount", "cpuBattle", "あいこを経験する");
-  [[5, 20], [20, 60], [50, 140], [100, 260]]
-    .forEach(([t, r]) => addTier(`drawCount_${t}`, "drawCount", t, r,
-      `にらみ合い・${t}`, `あいこを${t}回経験する`));
-
-  // 属性ごとの勝利数
-  const winTiers = [[5, 20], [20, 60], [50, 140], [100, 280]];
-  attrs.forEach(attr => {
-    registerLine(`winsByAttribute.${attr}`, "attribute", () => `${ATTR_DATA[attr].name}属性で勝利する`);
-    winTiers.forEach(([t, r]) => addTier(`winsBy_${attr}_${t}`, `winsByAttribute.${attr}`, t, r,
-      () => `${ATTR_DATA[attr].name}使い・${t}勝`,
-      () => `${ATTR_DATA[attr].name}属性で${t}回勝利する`));
-  });
-
-  // 属性ごとの累計与ダメージ
-  const dmgTiers = [[100, 30], [500, 120], [1000, 220]];
-  attrs.forEach(attr => {
-    registerLine(`damageByAttribute.${attr}`, "attribute", () => `${ATTR_DATA[attr].name}属性でダメージを与える`);
-    dmgTiers.forEach(([t, r]) => addTier(`dmgBy_${attr}_${t}`, `damageByAttribute.${attr}`, t, r,
-      () => `${ATTR_DATA[attr].name}の猛攻・${t}`,
-      () => `${ATTR_DATA[attr].name}属性で通算${t}ダメージ与える`));
-  });
-
-  // 属性ごとの挑戦回数
-  const playTiers = [[1, 10], [10, 50]];
-  attrs.forEach(attr => {
-    registerLine(`attributePlayCount.${attr}`, "attribute", () => `${ATTR_DATA[attr].name}属性で戦う`);
-    playTiers.forEach(([t, r]) => addTier(`playAs_${attr}_${t}`, `attributePlayCount.${attr}`, t, r,
-      () => t === 1 ? `${ATTR_DATA[attr].name}デビュー` : `${ATTR_DATA[attr].name}を使い込む`,
-      () => `${ATTR_DATA[attr].name}属性で${t}回戦う`));
-  });
-
-  // 手の使用回数
-  const handMeta = { rock: "グー", paper: "パー", scissors: "チョキ" };
-  const handTiers = [[20, 15], [50, 35], [100, 70], [200, 130]];
-  Object.keys(handMeta).forEach(handKey => {
-    registerLine(`handUseCount.${handKey}`, "combat", `${handMeta[handKey]}を出す`);
-    handTiers.forEach(([t, r]) => addTier(`hand_${handKey}_${t}`, `handUseCount.${handKey}`, t, r,
-      `${handMeta[handKey]}使い・${t}`, `${handMeta[handKey]}を通算${t}回出す`));
-  });
-
-  // 総ダメージ(通算・全属性共通)
-  registerLine("totalDamageDealt", "combat", "通算ダメージを与える");
-  [[100, 20], [500, 90], [1000, 170], [3000, 400], [5000, 650]]
-    .forEach(([t, r]) => addTier(`totalDamage_${t}`, "totalDamageDealt", t, r,
-      `破壊の軌跡・${t}`, `通算で${t}ダメージ与える`));
-
-  // 被ダメージ(通算・耐久)
-  registerLine("totalDamageTaken", "combat", "通算ダメージに耐える");
-  [[100, 20], [500, 90], [1000, 170]]
-    .forEach(([t, r]) => addTier(`totalTaken_${t}`, "totalDamageTaken", t, r,
-      `不屈の精神・${t}`, `通算で${t}ダメージ耐える`));
-
-  // 高火力ヒット(1回で10以上のダメージ)
-  registerLine("highDamageHits", "combat", "会心の一撃を決める");
-  [[1, 15], [5, 40], [20, 100], [50, 220], [100, 400]]
-    .forEach(([t, r]) => addTier(`highDamageHits_${t}`, "highDamageHits", t, r,
-      `会心の一撃・${t}`, `1回で10以上のダメージを${t}回与える`));
-
-  // 凍結(氷)通算
-  registerLine("freezeCount", "combat", "相手を凍結させる");
-  [[10, 30], [30, 90], [60, 180]]
-    .forEach(([t, r]) => addTier(`freeze_${t}`, "freezeCount", t, r,
-      `氷結の刻・${t}`, `氷属性で相手を通算${t}回凍結させる`));
-
-  // 毒付与(毒)通算
-  registerLine("poisonApplyCount", "combat", "相手に毒を付与する");
-  [[10, 30], [30, 90], [60, 180]]
-    .forEach(([t, r]) => addTier(`poison_${t}`, "poisonApplyCount", t, r,
-      `猛毒の使者・${t}`, `毒属性で相手に通算${t}回毒を付与する`));
-
-  // 呪い付与(呪術)通算
-  registerLine("curseApplyCount", "combat", "相手に呪いを付与する");
-  [[10, 30], [30, 90], [60, 180]]
-    .forEach(([t, r]) => addTier(`curse_${t}`, "curseApplyCount", t, r,
-      `呪詛の連鎖・${t}`, `呪術属性で相手に通算${t}回呪いを付与する`));
-
-  // 総獲得コイン
-  registerLine("coinsEarnedTotal", "economy", "コインを稼ぐ");
-  [[50, 10], [100, 20], [300, 50], [500, 80], [1000, 150], [2000, 280]]
-    .forEach(([t, r]) => addTier(`coinsEarned_${t}`, "coinsEarnedTotal", t, r,
-      `蓄財家・${t}`, `通算${t}コイン獲得する`));
-
-  // ショップ購入回数
-  registerLine("shopPurchaseCount", "economy", "ショップで購入する");
-  [[1, 10], [5, 40], [10, 90]]
-    .forEach(([t, r]) => addTier(`shopPurchase_${t}`, "shopPurchaseCount", t, r,
-      `お買い物上手・${t}`, `ショップで通算${t}種類購入する`));
-
-  // ストーリーのアイテムカード取得回数
-  registerLine("itemCardsCollected", "economy", "アイテムカードを集める");
-  [[3, 20], [10, 60], [20, 130]]
-    .forEach(([t, r]) => addTier(`itemCards_${t}`, "itemCardsCollected", t, r,
-      `カードコレクター・${t}`, `ストーリーモードでアイテムカードを通算${t}枚取得する`));
-
-  // 全属性コンプリート系
-  registerLine("attributesTriedCount", "attribute", "属性コンプリート(体験)");
-  addTier("attrsTried_all", "attributesTriedCount", attrs.length, 300,
-    "属性コンプリート(体験)", `全${attrs.length}属性でそれぞれ1回以上戦う`);
-  registerLine("attributesWonCount", "attribute", "属性コンプリート(勝利)");
-  addTier("attrsWon_all", "attributesWonCount", attrs.length, 500,
-    "属性コンプリート(勝利)", `全${attrs.length}属性でそれぞれ1回以上勝利する`);
-
-  return quests;
-}
-
-// タブの表示順・ラベル
-const QUEST_CATEGORIES = [
-  { id: "cpuBattle", label: "CPU戦" },
-  { id: "attribute", label: "属性" },
-  { id: "combat", label: "戦闘記録" },
-  { id: "economy", label: "獲得・購入" }
-];
-
-const QUEST_CATALOG = {
-  launchGame:      { name: "ようこそ",         desc: "ゲームを起動する",               target: 1,  reward: 10,  category: "cpuBattle" },
-  fireBurst:       { name: "爆炎",             desc: "炎属性で攻撃力上昇を+5にする",   target: 5,  reward: 30,  category: "attribute" },
-  thunderBolt:     { name: "雷騰雲奔",         desc: "雷属性で15以上のダメージを出す", target: 15, reward: 30,  category: "attribute" },
-  permafrost:      { name: "永久凍土",         desc: "一度の戦闘で10回以上凍結する",   target: 10, reward: 50,  category: "combat" },
-  // 属性ごとの固有クエスト(fireBurst/thunderBolt/permafrostと同じ「1戦闘内のピーク値」方式、2026-07-05追加)
-  stoneGuard:      { name: "岩盤の守り",       desc: "石属性で1戦闘中にパワーを5回以上消費する",           target: 5,  reward: 30, category: "attribute" },
-  waterBlessing:   { name: "泉の恵み",         desc: "水属性で1戦闘中にあいこで5回以上回復する",           target: 5,  reward: 30, category: "attribute" },
-  windGust:        { name: "疾風怒濤",         desc: "風属性で風速を3にする",                              target: 3,  reward: 30, category: "attribute" },
-  fighterBlade:    { name: "音速の蹴り",       desc: "格闘家属性で1戦闘中にチョキで5回勝利する",           target: 5,  reward: 30, category: "attribute" },
-  poisonQueen:     { name: "猛毒の女王",       desc: "毒属性で相手の毒スタックを5まで積み上げる",          target: 5,  reward: 40, category: "attribute" },
-  vampireThirst:   { name: "血の匂い",         desc: "吸血属性で1回の吸血回復量を8以上にする",             target: 8,  reward: 30, category: "attribute" },
-  doppelMadness:   { name: "鏡合わせの狂気",   desc: "ドッペルゲンガー属性であいこを7回重ねて反撃ダメージを強化する", target: 7, reward: 40, category: "attribute" },
-  curseAbyss:      { name: "呪いの深淵",       desc: "呪術属性で相手の呪いスタックを5まで積み上げる",      target: 5,  reward: 40, category: "attribute" },
-  cannonBlast:     { name: "一撃必砲",         desc: "砲台属性で1回のグーで20以上のダメージを与える",      target: 20, reward: 40, category: "attribute" },
-  gamblerJackpot:  { name: "運命の一振り",     desc: "ギャンブラー属性で1回の攻撃で15以上のダメージを出す", target: 15, reward: 40, category: "attribute" },
-  magicianMastery: { name: "大魔導の極意",     desc: "マジシャン属性で永続攻撃力を+5にする",               target: 5,  reward: 40, category: "attribute" },
-  berserkerRampage:{ name: "怒りの暴走",       desc: "バーサーカー属性で1戦闘中に合計30以上のダメージを与える", target: 30, reward: 40, category: "attribute" },
-  // この2つはcpuBattlesPlayedの値をそのまま見るstatPath方式に統一(以前は専用のupdateQuestProgress呼び出しで管理していた)
-  practiceMatters: { name: "練習は大事！",     desc: "CPU戦を5回遊ぶ",                 target: 5,  reward: 20,  statPath: "cpuBattlesPlayed", category: "cpuBattle" },
-  bePrepared:      { name: "備えあれば憂いなし", desc: "CPU戦を20回遊ぶ",              target: 20, reward: 100, statPath: "cpuBattlesPlayed", category: "cpuBattle" },
-  ...buildMilestoneQuests()
-};
-
-// 生成クエストにはcategoryを個別に持たせていないため、statPathからQUEST_LINE_METAを引いて補完する
-Object.keys(QUEST_CATALOG).forEach(id => {
-  const quest = QUEST_CATALOG[id];
-  if (!quest.category && quest.statPath && QUEST_LINE_META[quest.statPath]) {
-    quest.category = QUEST_LINE_META[quest.statPath].category;
-  }
-});
-
-// 同じstatPath(または、statPathを持たない単独クエストは自分自身のid)を持つクエストを
-// 「1本の進捗トラック」としてまとめるためのグループキー
-function getQuestGroupKey(questId) {
-  return QUEST_CATALOG[questId].statPath || questId;
-}
-
-// 画面に表示する行(グループ)一覧を、指定タブに属するものだけカテゴリ順・target昇順で返す
-function getQuestLinesForCategory(category) {
-  const groups = {};
-  Object.keys(QUEST_CATALOG).forEach(id => {
-    const quest = QUEST_CATALOG[id];
-    if (quest.category !== category) return;
-    const key = getQuestGroupKey(id);
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(id);
-  });
-  const lines = Object.keys(groups).map(key => {
-    const ids = groups[key].sort((a, b) => QUEST_CATALOG[a].target - QUEST_CATALOG[b].target);
-    const meta = QUEST_LINE_META[key];
-    const label = meta ? meta.label : QUEST_CATALOG[ids[0]].name;
-    return { key, ids, label };
-  });
-
-  // 受け取り可能な段階が1つでもある行を上に表示し、すぐ見つけられるようにする(Array.sortは安定ソートなので、
-  // 同じ優先度内の順序は元のまま維持される)
-  lines.sort((a, b) => {
-    const aClaimable = a.ids.some(isQuestClaimable) ? 0 : 1;
-    const bClaimable = b.ids.some(isQuestClaimable) ? 0 : 1;
-    return aClaimable - bClaimable;
-  });
-
-  return lines;
-}
-
-// 進捗だけを更新する(statPathを持たない、手動条件の少数クエスト専用)。
-// 目標達成しても報酬は自動付与せず、claimQuestReward()を押すまで「獲得可能」状態で待機する
-function updateQuestProgress(questId, value) {
-  const record = saveData.quests.mainProgress[questId] || { progress: 0, claimed: false };
-  if (value > record.progress) record.progress = value;
-  saveData.quests.mainProgress[questId] = record;
-  saveSaveData();
-  updateQuestClaimableBadge();
-}
-
-// statPathを持つクエストはsaveData.statsから直接読み、持たない場合は従来通りmainProgressの保存値を読む
-function getQuestProgress(questId) {
-  const quest = QUEST_CATALOG[questId];
-  if (quest.statPath) return getStatByPath(quest.statPath);
-  const record = saveData.quests.mainProgress[questId];
-  return record ? record.progress : 0;
-}
-
-function isQuestClaimable(questId) {
-  const record = saveData.quests.mainProgress[questId];
-  if (record && record.claimed) return false;
-  return getQuestProgress(questId) >= QUEST_CATALOG[questId].target;
-}
-
-// クエスト画面で「獲得する」を押した時に呼ぶ。ここで初めて報酬コインが付与される
-function claimQuestReward(questId) {
-  if (!isQuestClaimable(questId)) return false;
-  const record = saveData.quests.mainProgress[questId] || { progress: 0, claimed: false };
-  record.claimed = true;
-  saveData.quests.mainProgress[questId] = record;
-  addCoins(QUEST_CATALOG[questId].reward); // addCoins内でsaveSaveData()される
-  return true;
-}
-
-function countClaimableQuests() {
-  return Object.keys(QUEST_CATALOG).filter(isQuestClaimable).length;
-}
-
 // モード選択画面の「クエスト」ボタン右上に、獲得可能なクエスト件数のバッジを出す
 function updateQuestClaimableBadge() {
   const badge = document.getElementById("questClaimableBadge");
@@ -1181,20 +774,22 @@ document.getElementById("quest-list").addEventListener("click", (e) => {
   const node = e.target.closest(".quest-node.claimable");
   if (!node) return;
 
-  claimQuestReward(node.dataset.quest);
+  if (claimQuestReward(node.dataset.quest)) playCoinSE();
   renderQuestList();
   updateQuestClaimableBadge();
 });
 
 document.getElementById("quest-claim-all-btn").addEventListener("click", () => {
   const lines = getQuestLinesForCategory(currentQuestCategory);
+  let claimedAny = false;
   lines.forEach(line => {
     line.ids.forEach(id => {
-      if (isQuestClaimable(id)) claimQuestReward(id);
+      if (isQuestClaimable(id) && claimQuestReward(id)) claimedAny = true;
     });
   });
   renderQuestList();
   updateQuestClaimableBadge();
+  if (claimedAny) playCoinSE();
 });
 
 const btnQuest = document.querySelector(".mode-btn.quest");
@@ -1217,12 +812,8 @@ if (btnQuestBack) {
 // ファイルの先頭付近（既にあるなら重複させない）
 let playerState = {};
 let cpuState = {};
-let freezeCountThisBattle = 0;
-// 属性ごとの固有クエスト(fireBurst/thunderBolt/permafrostと同じ「1戦闘内のピーク値」方式)で使う、
-// 1戦闘ごとにリセットする専用カウンタ
-let waterHealCountThisBattle = 0;
-let fighterScissorsWinCountThisBattle = 0;
-let berserkerDamageThisBattle = 0;
+// 1戦闘中のピーク値をクエスト進捗に使うカウンタ(freezeCountThisBattle等)はjs/battle.js側の
+// 非公開stateに移動済み。戦闘開始時はresetBattleCounters()を呼ぶ。
 
 // 汎用戦闘コンテキスト（CPU戦 / ストーリーモードで共有）
 let battleContext = {
@@ -1234,28 +825,7 @@ let battleContext = {
 let selectedStageId = null;
 
 // ===== ストーリーモード：ステージ / アイテムカード =====
-const STAGE_CATALOG = {
-  stage1: {
-    name: "灼熱の坑道",
-    intro: "火山の奥深くに眠る坑道。荒くれ者たちが巣食っている。",
-    background: "./images/stage/1.png",
-    reward: 100,
-    // プレイヤーの基礎HP(fire25/thunder30/ice30)に合わせたスケール
-    enemies: [
-      { name: "はぐれ戦士", img: "./images/enemy/akasra.png",  attribute: "fire",    maxHp: 20, maxPower: 2, aiType: "aggressive" },
-      { name: "氷の番人",   img: "./images/enemy/mizusra.png", attribute: "ice",     maxHp: 28, maxPower: 3, aiType: "defensive" },
-      { name: "坑道の主",   img: "./images/enemy/akasra.png",  attribute: "thunder", maxHp: 40, maxPower: 4, aiType: "balanced" }
-    ]
-  }
-};
-
-const ITEM_CARD_CATALOG = {
-  hpUp:        { name: "生命の欠片", desc: "最大HP+12（全回復）",             apply(p) { p.maxHp += 12; p.hp = p.maxHp; } },
-  powerUp:     { name: "闘気の残滓", desc: "最大パワー+1",                   apply(p) { p.maxPower += 1; } },
-  fireEmber:   { name: "業火の種",   desc: "（炎専用）攻撃力上昇+2",         apply(p) { p.fireAtkBonus = (p.fireAtkBonus || 0) + 2; }, attribute: "fire" },
-  thunderCore: { name: "雷核",       desc: "（雷専用）チャージ+2",           apply(p) { p.thunderCharge = Math.min((p.thunderCharge || 0) + 2, 5); }, attribute: "thunder" },
-  iceHeart:    { name: "氷結の心臓", desc: "（氷専用）凍結準備が発動済みに", apply(p) { p.freezeReady = true; }, attribute: "ice" }
-};
+// STAGE_CATALOG/ITEM_CARD_CATALOGの定義はjs/story-catalog.jsに切り出し済み(冒頭のimportを参照)。
 
 
 function showScreen(id) {
@@ -1371,6 +941,8 @@ function resetBattleEffectsUI() {
 }
 
 function resetHandCards() {
+  handCommitted = false;
+
   document.querySelectorAll(".hand-card").forEach(card => {
 
     // アニメーション系クラスをリセット
@@ -1557,10 +1129,7 @@ function rematchBattle() {
   initAttribute(playerState, playerAttribute);
   initAttribute(cpuState, cpuAttribute);
 
-  freezeCountThisBattle = 0;
-  waterHealCountThisBattle = 0;
-  fighterScissorsWinCountThisBattle = 0;
-  berserkerDamageThisBattle = 0;
+  resetBattleCounters();
 
   document.getElementById("resultText").innerText = "";
 
@@ -1582,6 +1151,7 @@ function exitBattleToScreen(targetScreenId) {
   document.getElementById("resultText").innerText = "";
 
   stopBGM(bgmcpuBattle);
+  stopBGM(bgmStory);
   bgmMode.volume = currentBgmVolume;
   bgmMode.play();
 
@@ -1661,6 +1231,104 @@ document.getElementById("btn-stage-confirm-enter").addEventListener("click", () 
   showScreen("screen-attr-select");
 });
 
+// 敵に入る前の共通入口。enemy.story がある敵の直前だけ読み物画面を挟み、
+// ない敵はこれまで通りstartStoryEnemy()へ直行する。
+function enterStoryEnemy() {
+  const stage = STAGE_CATALOG[battleContext.stageId];
+  const enemy = stage.enemies[battleContext.enemyIndex];
+
+  if (enemy.story) {
+    // 読み物シーンの間だけ専用BGMに切り替え、戦闘開始時に戦闘BGMへ戻す
+    stopBGM(bgmcpuBattle);
+    bgmStory.volume = currentBgmVolume;
+    bgmStory.currentTime = 0;
+    bgmStory.play();
+
+    showStoryReadScreen(enemy.story, () => {
+      stopBGM(bgmStory);
+      bgmcpuBattle.volume = currentBgmVolume;
+      bgmcpuBattle.currentTime = 0;
+      bgmcpuBattle.play();
+      startStoryEnemy();
+    });
+  } else {
+    startStoryEnemy();
+  }
+}
+
+// VN風の読み物画面。story = { title?, background?, lines: [{ speaker?, text, portraits? }] }
+// 立ち絵(portraits)はキャラ素材ができてから行ごとに追加する想定。今は指定がなければ何も描画しない。
+function showStoryReadScreen(story, onContinue) {
+  const screenEl = document.getElementById("screen-story-read");
+  const bgUrl = story.background || (STAGE_CATALOG[battleContext.stageId] || {}).background || "";
+  document.getElementById("vn-bg").style.backgroundImage = bgUrl ? `url("${bgUrl}")` : "none";
+
+  const titleCard = document.getElementById("vn-title-card");
+  const dialogueBox = document.getElementById("vn-dialogue-box");
+  const namePlate = document.getElementById("vn-name-plate");
+  const dialogueText = document.getElementById("vn-dialogue-text");
+  const portraitsEl = document.getElementById("vn-portraits");
+
+  let showingTitle = Boolean(story.title);
+  let lineIndex = 0;
+
+  function renderPortraits(portraits) {
+    portraitsEl.innerHTML = (portraits || []).map(p => `
+      <img class="vn-portrait vn-portrait-${p.position || "center"} ${p.active === false ? "vn-portrait-dim" : ""}" src="${p.img}" alt="">
+    `).join("");
+  }
+
+  function renderTitleCard() {
+    titleCard.textContent = story.title;
+    titleCard.classList.add("show");
+    dialogueBox.classList.remove("show");
+    portraitsEl.innerHTML = "";
+  }
+
+  function renderLine() {
+    const line = story.lines[lineIndex];
+    titleCard.classList.remove("show");
+    dialogueBox.classList.add("show");
+
+    if (line.speaker) {
+      namePlate.textContent = line.speaker.replace(/\{name\}/g, saveData.profileName);
+      namePlate.style.display = "";
+    } else {
+      namePlate.style.display = "none";
+    }
+    dialogueText.textContent = line.text.replace(/\{name\}/g, saveData.profileName);
+    renderPortraits(line.portraits);
+  }
+
+  function onClick() {
+    if (showingTitle) {
+      showingTitle = false;
+      renderLine();
+      return;
+    }
+    lineIndex++;
+    if (lineIndex >= story.lines.length) {
+      cleanup();
+      onContinue();
+      return;
+    }
+    renderLine();
+  }
+
+  function cleanup() {
+    screenEl.removeEventListener("click", onClick);
+  }
+
+  screenEl.addEventListener("click", onClick);
+
+  if (showingTitle) {
+    renderTitleCard();
+  } else {
+    renderLine();
+  }
+  showScreen("screen-story-read");
+}
+
 // 敵1体分をセットアップし、黒帯演出とともに戦闘画面へ（初回・2体目以降で共通利用）
 function startStoryEnemy() {
   // 前の敵を倒した際は endJankenScene() を経由しないため、
@@ -1689,16 +1357,14 @@ function startStoryEnemy() {
   };
   initAttribute(cpuState, cpuAttribute);
 
-  freezeCountThisBattle = 0;
-  waterHealCountThisBattle = 0;
-  fighterScissorsWinCountThisBattle = 0;
-  berserkerDamageThisBattle = 0;
+  resetBattleCounters();
 
   setBattleBackground(stage.background);
   setEnemyImage(enemy.img);
   document.getElementById("enemy-img").classList.remove("enemyFadeOut");
   document.getElementById("cpu-attr-icon").src = ATTR_DATA[cpuAttribute].img;
   document.getElementById("player-attr-icon").src = ATTR_DATA[playerAttribute].img;
+  applyAttributeHudColors(playerAttribute, cpuAttribute);
 
   updateBattleUI();
   setupPlayerStatusWindow();
@@ -1723,7 +1389,13 @@ function startStoryEnemy() {
   }, 600);
 }
 
+// 選択直後に画面が切り替わるまで数百msかかるため、その間に連打されると
+// enemyIndexが複数回進んでしまい配列範囲外になるバグがあった。ロックで二重発火を防ぐ。
+let itemCardChoiceLocked = false;
+
 function renderItemCardChoice() {
+  itemCardChoiceLocked = false;
+
   const pool = Object.keys(ITEM_CARD_CATALOG).filter(id => {
     const card = ITEM_CARD_CATALOG[id];
     return !card.attribute || card.attribute === playerAttribute;
@@ -1743,6 +1415,8 @@ function renderItemCardChoice() {
 document.getElementById("item-card-list").addEventListener("click", (e) => {
   const el = e.target.closest(".item-card-option");
   if (!el) return;
+  if (itemCardChoiceLocked) return;
+  itemCardChoiceLocked = true;
 
   const cardId = el.dataset.card;
   ITEM_CARD_CATALOG[cardId].apply(playerState);
@@ -1750,7 +1424,7 @@ document.getElementById("item-card-list").addEventListener("click", (e) => {
   incrementStat("itemCardsCollected");
   battleContext.enemyIndex++;
 
-  startStoryEnemy();
+  enterStoryEnemy();
 });
 
 // 敵を倒した直後の分岐：次の敵がいればアイテムカード選択、いなければステージクリア
@@ -1782,13 +1456,29 @@ function endStoryRun(success) {
   const bodyEl = document.getElementById("storyResultBody");
 
   if (success) {
-    addCoins(stage.reward);
+    // ステージ報酬(コイン・属性解放)は初回クリアのみ。周回でのファーミングを防ぐ。
+    const isFirstClear = !isStageCleared(battleContext.stageId);
     markStageCleared(battleContext.stageId);
     titleEl.innerText = "ステージクリア！";
     const cardNames = battleContext.itemCardsTaken.map(id => ITEM_CARD_CATALOG[id].name);
+
+    let rewardHtml;
+    if (isFirstClear) {
+      addCoins(stage.reward);
+      let unlockHtml = "";
+      if (stage.unlocksAttribute && !isAttributeUnlocked(stage.unlocksAttribute)) {
+        unlockAttribute(stage.unlocksAttribute);
+        const unlockedData = ATTR_DATA[stage.unlocksAttribute];
+        unlockHtml = `<p class="story-attr-unlock">新しい属性「${unlockedData.name}」が解放された！</p>`;
+      }
+      rewardHtml = `<p>報酬：${stage.reward}コイン(初回クリア報酬)</p>${unlockHtml}`;
+    } else {
+      rewardHtml = `<p>このステージは既にクリア済みのため、追加の報酬はありません。</p>`;
+    }
+
     bodyEl.innerHTML = `
-      <p>報酬：${stage.reward}コイン</p>
       <p>獲得したアイテムカード：${cardNames.length ? cardNames.join("、") : "なし"}</p>
+      ${rewardHtml}
     `;
   } else {
     titleEl.innerText = "敗北…";
@@ -1806,13 +1496,6 @@ document.getElementById("btn-story-result-to-mode").addEventListener("click", ()
   exitBattleToScreen("screen-mode");
 });
 // ===== ストーリーモードここまで =====
-
-function getRandomAttribute() {
-  const keys = Object.keys(ATTR_DATA);
-  const index = Math.floor(Math.random() * keys.length);
-  return keys[index];
-}
-
 
 //ステータス更新表示（ATTR_LOGIC[attr].getStatus() を使って属性ごとの分岐をなくす）
 function renderStatusWindow(win, attribute, state) {
@@ -1840,165 +1523,6 @@ function setupCpuStatusWindow() {
   renderStatusWindow(document.getElementById("cpu-status-window"), cpuAttribute, cpuState);
 }
 
-// グーのパワー消費量を求める。ATTR_LOGIC[attr].powerCostは固定値(数値)でも、
-// 現在のパワー残量に応じて変わる関数(state => 消費量)でもよい（未指定なら2）
-function getPowerCost(attribute, state) {
-    const logic = ATTR_LOGIC[attribute];
-    const cost = logic && logic.powerCost !== undefined ? logic.powerCost : 2;
-    return typeof cost === "function" ? cost(state) : cost;
-}
-
-// グーでパワーを使った攻撃ができるかどうかを判定する。
-// デフォルトは「コスト>0 かつ 現在パワーがコスト以上」。
-// ATTR_LOGIC[attr].canUsePower(state, cost)を定義すれば上書き可能
-// （ギャンブラーの確変中はパワー0でも攻撃できる、など）
-function canUsePower(attribute, state, cost) {
-    const logic = ATTR_LOGIC[attribute];
-    if (logic && logic.canUsePower) return logic.canUsePower(state, cost);
-    return cost > 0 && state.power >= cost;
-}
-
-// ギャンブラーのダイスロールダメージ（消費量1〜3に応じてダイス数が変わり、3以上は+5される）
-function rollGamblerDamage(stacks, actingState) {
-    if (stacks <= 0) return 0;
-    const diceCount = Math.min(stacks, 3);
-    let total = 0;
-    for (let i = 0; i < diceCount; i++) {
-        total += Math.floor(battleRandom(actingState) * 5) + 1; // 1〜5のダイス
-    }
-    if (stacks >= 3) total += 5;
-    return total;
-}
-
-function baseDamage(hand, usedPower, attribute, attackerState, powerCost) {
-    // 属性ごとに基礎ダメージを上書きしたい場合はATTR_LOGIC[attr].getBaseDamageで対応
-    const logic = ATTR_LOGIC[attribute];
-    if (logic && logic.getBaseDamage) {
-        const override = logic.getBaseDamage(hand, usedPower, attackerState, powerCost);
-        if (override !== null && override !== undefined) return override;
-    }
-
-    if (hand === 2) return 4;      // チョキ
-    if (hand === 1) return 2;      // パー
-    if (hand === 0) return usedPower ? 7 : 1; // グー
-}
-
-
-// 属性補正計算
-
-function attributeBonus(state, hand, attribute) {
-    let bonus = 0;
-
-    // ▼ 炎
-    if (attribute === "fire") {
-
-        // グー限定 fireAtkBonus
-        if (hand === 0) {
-            bonus += (state.fireAtkBonus || 0);
-        }
-
-        // 全手に乗る fireRage
-        if (state.fireRage) {
-            bonus += 2;
-        }
-    }
-
-    // ▼ 雷
-    if (attribute === "thunder") {
-        if (state.thunderCharge >= 3 && state.thunderCharge < 5) {
-            bonus += 1;
-        }
-        if (state.thunderCharge === 5) {
-            bonus += 10;
-        }
-    }
-
-    // ▼ 石（段階強化で積み上がる攻撃力上昇）
-    if (attribute === "stone") {
-        bonus += (state.stoneAtkBonus || 0);
-    }
-
-    // ▼ 風（風速3のとき火力上昇）
-    if (attribute === "wind" && state.windSpeed === 3) {
-        bonus += 4;
-    }
-
-    // ▼ マジシャン（パワー消費でランダムに積み上がる永続攻撃力）
-    if (attribute === "magician") {
-        bonus += (state.magicianAtkBonus || 0);
-    }
-
-    return bonus;
-}
-
-// 防御側の被ダメージ軽減計算
-function damageReduction(state, attribute) {
-    let reduction = 0;
-
-    // ▼ 石
-    if (attribute === "stone") {
-        reduction += (state.stoneDefenseReduction || 0);
-    }
-
-    // ▼ マジシャン（パワー消費でランダムに積み上がる永続防御力、上限3）
-    if (attribute === "magician") {
-        reduction += (state.magicianDefBonus || 0);
-    }
-
-    return reduction;
-}
-
-// ローグライク補正計算（今はまだ0）
-function roguelikeBonus(state) {
-    return 0;
-}
-
-
-//ダメージ計算関数
-function calcDamage(
-    attackerState,
-    defenderState,
-    attackerHand,
-    defenderHand,
-    attackerAttribute,
-    usedPower,   // ★ 追加
-    defenderAttribute,
-    attackerPowerCost   // ★ 追加（今回消費したパワー量。砲台のような可変ダメージ属性用）
-) {
-
-   // 勝敗判定
-    const result = (attackerHand - defenderHand + 3) % 3;
-    if (result !== 1) return 0;
-
-    // ① 基礎ダメージ
-    let damage = baseDamage(attackerHand, usedPower, attackerAttribute, attackerState, attackerPowerCost);
-
-    // ② 属性補正
-    damage += attributeBonus(attackerState, attackerHand, attackerAttribute);
-
-    // ③ ローグライク補正（今はまだ0）
-    damage += roguelikeBonus(attackerState);
-
-    // ④ 防御側の被ダメージ軽減
-    damage -= damageReduction(defenderState, defenderAttribute);
-
-    return Math.max(0, damage);
-}
-
-// 実際に勝つかどうかに関わらず、この手を出したら何ダメージになるかを事前計算する
-// （10ダメージ以上になりそうな攻撃を検知して、ぽん!前のカットイン演出を出すために使う）
-function previewAttackDamage(attackerState, defenderState, hand, attackerAttribute, defenderAttribute) {
-    const cost = getPowerCost(attackerAttribute, attackerState);
-    const usedPower = hand === 0 && canUsePower(attackerAttribute, attackerState, cost);
-
-    let damage = baseDamage(hand, usedPower, attackerAttribute, attackerState, cost);
-    damage += attributeBonus(attackerState, hand, attackerAttribute);
-    damage += roguelikeBonus(attackerState);
-    damage -= damageReduction(defenderState, defenderAttribute);
-
-    return Math.max(0, damage);
-}
-
 // CPUの性格（手の出し方の傾向）
 const AI_TYPES = {
   aggressive: { rock: 0.6, scissors: 0.25, paper: 0.15 }, // 攻撃型
@@ -2017,6 +1541,21 @@ function cpuChooseHand(aiType) {
 
 
 //============================================================
+
+// 戦闘開始時、黒帯が開いた瞬間に「自分の属性 VS 相手の属性」を一瞬見せる演出
+function showBattleStartSplash(playerAttr, cpuAttr) {
+  const el = document.getElementById("battleStartSplash");
+  if (!el) return;
+
+  document.getElementById("battleStartPlayerIcon").src = ATTR_DATA[playerAttr].img;
+  document.getElementById("battleStartPlayerName").textContent = ATTR_DATA[playerAttr].name;
+  document.getElementById("battleStartCpuIcon").src = ATTR_DATA[cpuAttr].img;
+  document.getElementById("battleStartCpuName").textContent = ATTR_DATA[cpuAttr].name;
+
+  el.classList.remove("show");
+  void el.offsetWidth; // リフロー強制でアニメーションをリスタート(showBigAttackCutInと同じ手法)
+  el.classList.add("show");
+}
 
 function playEnemyZoomIn() {
   const enemy = document.getElementById("enemy-img");
@@ -2094,6 +1633,20 @@ const seCardFly = document.getElementById("se-card-fly");
 const seDamage = document.getElementById("se-damage");
     const winSE = document.getElementById("se-gekiha");
 const seBigImpact = document.getElementById("se-big-impact");
+const seCoin = document.getElementById("se-coin");
+const sePurchase = document.getElementById("se-purchase");
+
+// クエスト報酬受け取り時のSE(連打・まとめて受け取り時も鳴らせるよう毎回currentTimeを巻き戻す)
+function playCoinSE() {
+  seCoin.currentTime = 0;
+  seCoin.play();
+}
+
+// ショップで購入が成立した時のSE
+function playPurchaseSE() {
+  sePurchase.currentTime = 0;
+  sePurchase.play();
+}
 
 
 function playClick() {
@@ -2144,6 +1697,7 @@ function playCardHoverSE() {
 // ▼ 音源の取得
 const bgmMode = document.getElementById("bgm-mode");
 const bgmcpuBattle = document.getElementById("bgm-cpu-battle");
+const bgmStory = document.getElementById("bgm-story"); // ストーリーの読み物シーン(screen-story-read)専用BGM
 
 // ▼ 音量スライダー取得
 const bgmSlider = document.getElementById("bgm-volume");
@@ -2160,6 +1714,7 @@ if (savedBgm !== null) {
   currentBgmVolume = vol;   // ← これが最重要
   bgmMode.volume = vol;
   bgmcpuBattle.volume = vol;
+  bgmStory.volume = vol;
 }
 
 // SE
@@ -2173,6 +1728,8 @@ if (savedSe !== null) {
   seCardFly.volume = vol;
   seDamage.volume = vol;
   winSE.volume = vol;
+  seCoin.volume = vol;
+  sePurchase.volume = vol;
 }
 
 
@@ -2221,6 +1778,16 @@ document.querySelectorAll(".mymenu-tab-btn").forEach(btn => {
   });
 });
 
+// ショップのタブ切り替え(MYメニューとは別クラス・別data属性にして、お互いのactive状態に影響しないようにしている)
+document.querySelectorAll(".shop-tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".shop-tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".shop-tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.shopTabTarget).classList.add("active");
+  });
+});
+
   // 「ゲームを起動する」クエストの進捗を記録し、クエストボタンのバッジを初期表示する
   updateQuestProgress("launchGame", 1);
   updateModeCoinsDisplay();
@@ -2255,6 +1822,7 @@ function setBgmVolume(vol) {
   localStorage.setItem("bgmVolume", vol);
   bgmMode.volume = vol;
   bgmcpuBattle.volume = vol;
+  bgmStory.volume = vol;
   bgmSlider.value = vol;
   if (battleBgmSlider) battleBgmSlider.value = vol;
 }
@@ -2268,6 +1836,8 @@ function setSeVolume(vol) {
   seCardFly.volume = vol;
   seDamage.volume = vol;
   winSE.volume = vol;
+  seCoin.volume = vol;
+  sePurchase.volume = vol;
   seSlider.value = vol;
   if (battleSeSlider) battleSeSlider.value = vol;
 }
@@ -2460,118 +2030,39 @@ document.getElementById("btn-attr-back").addEventListener("click", () => {
 });
 
 let playerAttribute = null;
-
-const ATTR_DATA = {
-  fire: {
-    name: "炎",
-    img: "images/attr/fire.png",
-    shortDesc: "パワー消費で火力上昇。HP10以下でさらに強化。",
-    desc: "攻撃的で高火力の属性。パワーを消費するたびに攻撃力が上昇し、体力が10以下になると攻撃力がさらに上昇する。体力が少し少ない"
-  },
-  ice: {
-    name: "氷",
-    img: "images/attr/ice.png",
-    shortDesc: "勝利で相手のパワー獲得を封じる。",
-    desc: "冷気で相手の動きを鈍らせる属性。じゃんけんに勝利することで相手のパワー獲得を阻害することができる。"
-  },
-  thunder: {
-    name: "雷",
-    img: "images/attr/thunder.png",
-    shortDesc: "チャージを溜めて大技を狙う一撃属性。",
-    desc: "素早く強烈な一撃を放つ属性。チャージ３回で攻撃力が上昇し、チャージ５回で大ダメージを与えることができる。"
-  },
-  stone: {
-    name: "石",
-    img: "images/attr/stone.png",
-    shortDesc: "パワー消費で防御と攻撃を積み上げる。",
-    desc: "パワーを消費するたびに段階的に強化される、腰を据えた防御型の属性。被ダメージ軽減と攻撃力上昇を積み重ねていく。"
-  },
-  water: {
-    name: "水",
-    img: "images/attr/water.png",
-    shortDesc: "あいこでHPとパワーが回復する。",
-    desc: "あいこになるとHPが回復し、パワーも溜まっていく持久戦向けの属性。"
-  },
-  wind: {
-    name: "風",
-    img: "images/attr/wind.png",
-    shortDesc: "手を変えて風速を稼ぎ火力を上げる。",
-    desc: "手を切り替えて風速を稼ぎ、風速が3になると一気に火力が跳ね上がるテクニカルな属性。"
-  },
-  fighter: {
-    name: "格闘家",
-    img: "images/attr/fighter.png",
-    shortDesc: "低コストで手数を稼ぐ接近戦特化。",
-    desc: "パワー上限が高く、グーのパワー消費が1と軽い接近戦特化の属性。パーでパワーを大きく獲得でき、チョキは常に固定5ダメージを与える。"
-  },
-  poison: {
-    name: "毒",
-    img: "images/attr/poison.png",
-    shortDesc: "勝利で毒を付与し継続ダメージを与える。",
-    desc: "じゃんけんに勝利すると相手に毒を付与し、3ターンの間毎ターンダメージを与え続ける。毒が残っている間に再度勝利すると、毒ダメージが積み重なる。その分HPは低め。"
-  },
-  vampire: {
-    name: "吸血",
-    img: "images/attr/vampire.png",
-    shortDesc: "与ダメージの半分を吸収して回復する。",
-    desc: "与えたダメージの半分を自分のHPとして吸収する属性。パワーを消費したグーの攻撃は固定5ダメージ。"
-  },
-  doppel: {
-    name: "ドッペルゲンガー",
-    img: "images/attr/doppel.png",
-    shortDesc: "あいこで相手に反撃ダメージを与える。",
-    desc: "あいこになると相手に反撃ダメージを与える異形の属性。じゃんけんに勝利した際のダメージは手の種類に関わらず一律2固定。あいこを7回重ねると反撃ダメージが強化される。"
-  },
-  curse: {
-    name: "呪術",
-    img: "images/attr/curse.png",
-    shortDesc: "パワー消費で相手に呪いを蓄積させる。",
-    desc: "グーが命中したかどうかに関わらず、パワーを消費すると相手に呪いを付与する属性。呪われた相手はパーを出すたびにスタック数分のダメージを受ける。呪いは重複して積み重なる。"
-  },
-  cannon: {
-    name: "砲台",
-    img: "images/attr/cannon.png",
-    shortDesc: "被弾でパワーが溜まる高火力な砲台。",
-    desc: "パワー上限20の重火力型属性。被ダメージ時にパワーが+5溜まり、グーを出すと現在のパワーを全消費してその2倍のダメージを与える。"
-  },
-  gambler: {
-    name: "ギャンブラー",
-    img: "images/attr/gambler.png",
-    shortDesc: "全パワー消費でダイス勝負の一撃を放つ。",
-    desc: "グーを出すと所持パワーを全消費し、消費量に応じたダイスロールでダメージが変動する一発逆転型の属性。パワー消費時に25%の確率で「確変」に突入し、4ターンの間パワー消費なしで攻撃できる。"
-  },
-  magician: {
-    name: "マジシャン",
-    img: "images/attr/magician.png",
-    shortDesc: "パワー消費でランダムに成長していく。",
-    desc: "パワーを2消費すると「永続攻撃力+1」「永続防御力+1(上限3)」「HP4回復」のいずれかがランダムに発動する成長型の属性。"
-  },
-  berserker: {
-    name: "バーサーカー",
-    img: "images/attr/berserker.png",
-    shortDesc: "自傷しつつ固定高火力で殴り続ける。",
-    desc: "HP80の高耐久だが毎ターンHPが5ずつ減っていく属性。どの手を出しても6ダメージの固定火力を持ち、パワーを消費したグーはさらに+3ダメージを与える。"
-  }
-};
-
-
-
-function initAttribute(player, attr) {
-  ATTR_LOGIC[attr].init(player);
-}
+let cpuAttribute = null;
 
 // 属性選択画面のカードをATTR_DATAから生成する（属性を足すたびにHTMLを触らなくて済むように）
 function renderAttrCards(containerId) {
-  document.getElementById(containerId).innerHTML = Object.keys(ATTR_DATA).map(attr => {
+  document.getElementById(containerId).innerHTML = Object.keys(ATTR_DATA).filter(isAttributeUnlocked).map(attr => {
     const data = ATTR_DATA[attr];
     return `
-      <div class="attr-card" data-attr="${attr}">
+      <div class="attr-card" data-attr="${attr}" style="--attr-color:${data.color}">
         <img src="${data.img}" alt="${attr}">
         <h3>${data.name}</h3>
         <p>${data.shortDesc}</p>
       </div>
     `;
   }).join("");
+}
+
+// バトル開始時にプレイヤー/CPUの属性色をHUD(属性アイコンの光彩・HPバー)へ反映する。
+// --attr-color/--hp-color-defaultはCSSカスタムプロパティなので、.player-hud/.cpu-hudに
+// 設定するだけで子要素(.player-attr-box, .bar div)に自動的に継承される
+function applyAttributeHudColors(playerAttr, cpuAttr) {
+  const playerHud = document.querySelector(".player-hud");
+  const cpuHud = document.querySelector(".cpu-hud");
+  const playerColor = ATTR_DATA[playerAttr] ? ATTR_DATA[playerAttr].color : "";
+  const cpuColor = ATTR_DATA[cpuAttr] ? ATTR_DATA[cpuAttr].color : "";
+
+  if (playerHud) {
+    playerHud.style.setProperty("--attr-color", playerColor);
+    playerHud.style.setProperty("--hp-color-default", playerColor);
+  }
+  if (cpuHud) {
+    cpuHud.style.setProperty("--attr-color", cpuColor);
+    cpuHud.style.setProperty("--hp-color-default", cpuColor);
+  }
 }
 
 document.getElementById("attr-select-list").addEventListener("click", (e) => {
@@ -2610,16 +2101,20 @@ document.getElementById("btn-to-stage").addEventListener("click", () => {
   initAttribute(playerState, playerAttribute);
 
   stopBGM(bgmMode);
-  bgmcpuBattle.volume = currentBgmVolume;
-  bgmcpuBattle.currentTime = 0;
-  bgmcpuBattle.play();
+  // 最初の敵に読み物(story)があれば、enterStoryEnemy()側でstory用BGMに切り替える。
+  // 無ければここで戦闘BGMを開始する。
+  const firstEnemy = STAGE_CATALOG[battleContext.stageId].enemies[0];
+  if (!firstEnemy.story) {
+    bgmcpuBattle.volume = currentBgmVolume;
+    bgmcpuBattle.currentTime = 0;
+    bgmcpuBattle.play();
+  }
 
-  startStoryEnemy();
+  enterStoryEnemy();
 });
 
 
 document.getElementById("btn-mode-cpu").addEventListener("click", () => {
-  gameMode = "cpu";
   battleContext.mode = "cpu"; // オンライン対戦と属性選択/確認画面を共用するため、この時点で確定させておく
   renderAttrCards("cpu-attr-select-list");
   document.getElementById("cpu-attr-select-title").textContent = "CPU戦の属性を選択";
@@ -2702,10 +2197,7 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
   initAttribute(playerState, playerAttribute);
   initAttribute(cpuState, cpuAttribute);
 
-  freezeCountThisBattle = 0;
-  waterHealCountThisBattle = 0;
-  fighterScissorsWinCountThisBattle = 0;
-  berserkerDamageThisBattle = 0;
+  resetBattleCounters();
 
   updateBattleUI();
 
@@ -2736,15 +2228,18 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
     // CPU属性アイコン
    document.getElementById("cpu-attr-icon").src =
     ATTR_DATA[cpuAttribute].img;
+    applyAttributeHudColors(playerAttribute, cpuAttribute);
 
     // ⑤ 戦闘画面が表示された瞬間に黒帯を開く
     setTimeout(() => {
       openCurtain();
       playEnemyZoomIn();
+      showBattleStartSplash(playerAttribute, cpuAttribute);
 
+      // ⑥ VSスプラッシュ(1s)が表示し終わってから手札を配る
       setTimeout(() => {
         dealHandCards();
-      },300 );
+      }, 1000);
     }, 50);
 
   }, 600); // ← CSS の transition と同じ 0.6s
@@ -2763,347 +2258,6 @@ document.getElementById("btn-cpu-attr-confirm-next").addEventListener("click", (
 
   beginVersusBattle("cpu", getRandomAttribute(), "./images/enemy/mizusra.png");
 });
-
-//属性処理
-const ATTR_LOGIC = {
-  fire: {
-    name: "炎",
-    init(player) {
-      player.fireAtkBonus = 0;
-      player.fireRage = false;
-    },
-
-    onPowerUse(player) {
-      player.fireAtkBonus++;
-    },
-    onHpChange(player) {
-      if (player.hp <= 10) {
-        player.fireRage = true;
-      }
-    },
-    getStatus(player) {
-      return [
-        { label: "攻撃力上昇", value: `+${player.fireAtkBonus}` },
-        { label: "怒り状態", value: player.fireRage ? "ON" : "OFF" }
-      ];
-    }
-  },
-
-  thunder: {
-    name: "雷",
-    init(player) {
-      player.thunderCharge = 0;
-    },
-    onPowerUse(player) {
-      player.thunderCharge++;
-      if (player.thunderCharge > 5) player.thunderCharge = 5;
-    },
-    getStatus(player) {
-      return [
-        { label: "チャージ", value: `${player.thunderCharge} / 5` }
-      ];
-    }
-  },
-
-  ice: {
-    name: "氷",
-    init(player) {
-      player.freezeReady = false;
-    },
-    onWin(player) {
-      player.freezeReady = true;
-    },
-    getStatus(player) {
-      return [
-        { label: "凍結準備", value: player.freezeReady ? "READY" : "NO" }
-      ];
-    }
-  },
-
-  stone: {
-    name: "石",
-    init(player) {
-      player.stoneUseCount = 0;
-      player.stoneDefenseReduction = 0;
-      player.stoneAtkBonus = 0;
-    },
-    onPowerUse(player) {
-      player.stoneUseCount++;
-
-      if (player.stoneUseCount === 1) {
-        player.stoneDefenseReduction += 1;
-      } else if (player.stoneUseCount === 2) {
-        player.stoneAtkBonus += 1;
-      } else if (player.stoneUseCount === 3) {
-        player.stoneDefenseReduction += 1;
-      } else if (player.stoneUseCount > 3 && (player.stoneUseCount - 3) % 2 === 0) {
-        player.maxPower += 1;
-      }
-    },
-    getStatus(player) {
-      return [
-        { label: "被ダメージ軽減", value: `-${player.stoneDefenseReduction}` },
-        { label: "攻撃力上昇", value: `+${player.stoneAtkBonus}` }
-      ];
-    }
-  },
-
-  water: {
-    name: "水",
-    init(player) {
-      // 追加の状態は持たない（hp/powerは既存フィールドを流用）
-    },
-    onDraw(player) {
-      const healAmount = Math.min(3, player.maxHp - player.hp);
-      player.hp = Math.min(player.hp + 3, player.maxHp);
-      player.power = Math.min(player.power + 1, player.maxPower);
-      return { heal: healAmount }; // UIのポップアップ表示に使う
-    },
-    getBaseDamage(hand, usedPower) {
-      if (hand === 0 && usedPower) return 6; // グー(パワー消費時)は固定6ダメージ
-      return null;
-    },
-    getStatus(player) {
-      return [
-        { label: "あいこ時の恩恵", value: "HP+3 / パワー+1" }
-      ];
-    }
-  },
-
-  wind: {
-    name: "風",
-    init(player) {
-      player.windSpeed = 0;
-      player.windLastHand = null;
-    },
-    onHandPlayed(player, hand) {
-      if (player.windSpeed === 3) {
-        player.windSpeed = 0;
-      } else if (player.windLastHand !== null) {
-        if (hand === player.windLastHand) {
-          player.windSpeed = Math.max(0, player.windSpeed - 1);
-        } else {
-          player.windSpeed = Math.min(player.windSpeed + 1, 3);
-        }
-      }
-      player.windLastHand = hand;
-    },
-    onWin(player, hand, usedPower) {
-      if (hand === 0 && usedPower) {
-        player.windSpeed = Math.min(player.windSpeed + 2, 3);
-      }
-    },
-    getStatus(player) {
-      return [
-        { label: "風速", value: `${player.windSpeed} / 3` }
-      ];
-    }
-  },
-
-  fighter: {
-    name: "格闘家",
-    init(player) {
-      // 追加の状態は持たない（hp/powerは既存フィールドを流用）
-    },
-    powerCost: 1,   // グーのパワー消費量（通常は2）
-    paperGain: 2,   // パーで得るパワー量（通常は1）
-    getBaseDamage(hand, usedPower) {
-      if (hand === 2) return 5; // チョキは固定5ダメージ
-      return null; // グー・パーは通常計算に任せる
-    },
-    getStatus(player) {
-      return [
-        { label: "グー消費パワー", value: "1" },
-        { label: "パー獲得パワー", value: "+2" }
-      ];
-    }
-  },
-
-  poison: {
-    name: "毒",
-    init(player) {
-      player.poisonDamage = 0;
-      player.poisonTurnsLeft = 0;
-    },
-    onWin(player, hand, usedPower, damage, defenderState) {
-      applyPoison(defenderState);
-    },
-    getStatus(player) {
-      return [
-        { label: "毒付与", value: "1ダメージ/3ターン(重複で+1)" }
-      ];
-    }
-  },
-
-  vampire: {
-    name: "吸血",
-    init(player) {
-      // 追加の状態は持たない（hp/powerは既存フィールドを流用）
-    },
-    getBaseDamage(hand, usedPower) {
-      if (hand === 0 && usedPower) return 5; // グー(パワー消費時)は固定5ダメージ
-      return null;
-    },
-    onWin(player, hand, usedPower, damage) {
-      const healAmount = Math.floor(damage / 2);
-      const actualHeal = Math.min(healAmount, player.maxHp - player.hp);
-      player.hp = Math.min(player.hp + healAmount, player.maxHp);
-      return actualHeal; // 実際に回復した量を返し、UIのポップアップ表示に使う
-    },
-    getStatus(player) {
-      return [
-        { label: "吸血", value: "与ダメージの50%を回復" }
-      ];
-    }
-  },
-
-  doppel: {
-    name: "ドッペルゲンガー",
-    init(player) {
-      player.doppelDrawCount = 0;
-    },
-    onDraw(player, opponent) {
-      player.doppelDrawCount++;
-      const dmg = player.doppelDrawCount >= 7 ? 5 : 3;
-      opponent.hp = Math.max(0, opponent.hp - dmg);
-      return { damage: dmg }; // UIのポップアップ表示に使う
-    },
-    getBaseDamage(hand, usedPower) {
-      return 2; // 勝利時のダメージは手の種類に関わらず一律2固定
-    },
-    getStatus(player) {
-      return [
-        { label: "あいこ回数", value: `${player.doppelDrawCount}` },
-        { label: "あいこ反撃ダメージ", value: player.doppelDrawCount >= 7 ? "5" : "3" }
-      ];
-    }
-  },
-
-  curse: {
-    name: "呪術",
-    init(player) {
-      // 呪いスタック(curseStacks)は呪われた側に付与される汎用フィールドなので、
-      // 呪術属性自身は特別な初期状態を持たない
-    },
-    onPowerUse(player, opponent) {
-      // グーが当たったかどうかに関わらず、パワーを消費した時点で相手に呪いを付与する
-      opponent.curseStacks = (opponent.curseStacks || 0) + 1;
-    },
-    getStatus(player) {
-      return [
-        { label: "呪い付与条件", value: "パワー消費で相手に+1スタック" }
-      ];
-    }
-  },
-
-  cannon: {
-    name: "砲台",
-    init(player) {
-      // 追加の状態は持たない（hp/powerは既存フィールドを流用）
-    },
-    powerCost(state) {
-      return state.power; // 現在パワーを全消費
-    },
-    onHpChange(player) {
-      // 被ダメージ時にパワーが溜まる
-      player.power = Math.min(player.power + 5, player.maxPower);
-    },
-    getBaseDamage(hand, usedPower, attackerState, powerCost) {
-      if (hand === 0 && usedPower) return powerCost * 2; // 消費量×2ダメージ
-      return null;
-    },
-    getStatus(player) {
-      return [
-        { label: "被弾時パワー獲得", value: "+5" },
-        { label: "グー消費量", value: "現在パワー全て" }
-      ];
-    }
-  },
-
-  gambler: {
-    name: "ギャンブラー",
-    init(player) {
-      player.gamblerKakuhenTurns = 0;
-    },
-    // 確変中はパワー0でも攻撃可能。それ以外は通常通りパワーが1以上必要
-    canUsePower(state, cost) {
-      return state.gamblerKakuhenTurns > 0 || state.power > 0;
-    },
-    // 確変中はパワー消費0。それ以外は所持パワーを全消費
-    powerCost(state) {
-      return state.gamblerKakuhenTurns > 0 ? 0 : state.power;
-    },
-    getBaseDamage(hand, usedPower, attackerState, powerCost) {
-      if (hand !== 0 || !usedPower) return null;
-      // 確変中は消費量に関わらず最強の式(3d5+5)固定、それ以外は消費量に応じたダイス
-      const stacks = attackerState.gamblerKakuhenTurns > 0 ? 3 : powerCost;
-      return rollGamblerDamage(stacks, attackerState);
-    },
-    onPowerUse(player) {
-      if (battleRandom(player) < 0.25) {
-        player.gamblerKakuhenTurns = (player.gamblerKakuhenTurns || 0) + 4;
-      }
-    },
-    getStatus(player) {
-      return [
-        {
-          label: "確変",
-          value: player.gamblerKakuhenTurns > 0 ? `ON（残り${player.gamblerKakuhenTurns}ターン）` : "OFF"
-        }
-      ];
-    }
-  },
-
-  magician: {
-    name: "マジシャン",
-    init(player) {
-      player.magicianAtkBonus = 0;
-      player.magicianDefBonus = 0;
-    },
-    onPowerUse(player) {
-      // パワー消費のたびに3つの効果からランダムに1つ発動
-      const roll = Math.floor(battleRandom(player) * 3);
-      if (roll === 0) {
-        player.magicianAtkBonus++; // 永続攻撃力+1（上限なし）
-      } else if (roll === 1) {
-        player.magicianDefBonus = Math.min(player.magicianDefBonus + 1, 3); // 永続防御力+1（上限3）
-      } else {
-        const healAmount = Math.min(4, player.maxHp - player.hp); // HP4回復
-        player.hp = Math.min(player.hp + 4, player.maxHp);
-        return { heal: healAmount }; // UIのポップアップ表示に使う
-      }
-    },
-    getStatus(player) {
-      return [
-        { label: "永続攻撃力", value: `+${player.magicianAtkBonus}` },
-        { label: "永続防御力", value: `+${player.magicianDefBonus} / 3` }
-      ];
-    }
-  },
-
-  berserker: {
-    name: "バーサーカー",
-    init(player) {
-      // 追加の状態は持たない（hp/powerは既存フィールドを流用）
-    },
-    onTurnEnd(player) {
-      const dealt = Math.min(5, player.hp);
-      player.hp = Math.max(0, player.hp - 5); // 毎ターン自傷
-      return dealt; // UIのポップアップ表示に使う
-    },
-    getBaseDamage(hand, usedPower) {
-      let dmg = 6; // どの手でも固定6ダメージ
-      if (hand === 0 && usedPower) dmg += 3; // パワー消費したグーはさらに+3
-      return dmg;
-    },
-    getStatus(player) {
-      return [
-        { label: "毎ターンHP減少", value: "-5" },
-        { label: "固定ダメージ", value: "6（パワー消費グーは+3）" }
-      ];
-    }
-  }
-};
 
 // 戦闘の処理
 
@@ -3132,18 +2286,32 @@ document.querySelectorAll(".hand-input-mode-btn").forEach(btn => {
   });
 });
 
-// MYメニュー設定タブ：コイン・クエスト達成状況だけをリセットする(所持スキン・解放済み属性・クリア済みステージ等は維持)
+// MYメニュー設定タブ：コイン・クエスト達成状況・属性解放・ステージクリア状況・購入状況(スキン/アイコン)を全てリセットする
 const btnResetCoinsQuests = document.getElementById("btn-reset-coins-quests");
 if (btnResetCoinsQuests) {
   btnResetCoinsQuests.addEventListener("click", () => {
-    showConfirmModal("コインとクエスト達成状況をリセットしますか？(所持スキンや属性解放、ステージクリア状況は残ります)", () => {
+    showConfirmModal("コイン・クエスト達成状況・解放済み属性・ステージクリア状況・購入状況(スキン/アイコン)をリセットしますか？", () => {
+      const defaults = cloneDefaultSaveData();
       saveData.coins = 0;
-      saveData.quests = cloneDefaultSaveData().quests;
-      saveData.stats = cloneDefaultSaveData().stats;
+      saveData.quests = defaults.quests;
+      saveData.stats = defaults.stats;
+      saveData.unlockedAttributes = [];
+      saveData.clearedStages = [];
+      saveData.ownedSkins = defaults.ownedSkins;
+      saveData.equippedSkin = defaults.equippedSkin;
+      saveData.ownedIconBgs = defaults.ownedIconBgs;
+      saveData.equippedIconBg = defaults.equippedIconBg;
+      saveData.ownedIcons = defaults.ownedIcons;
+      saveData.equippedIcon = defaults.equippedIcon;
       saveSaveData();
       updateModeCoinsDisplay();
       updateQuestClaimableBadge();
       renderQuestList();
+      updateModeProfileDisplay();
+      renderMyMenuSkinList();
+      renderMyMenuIconList();
+      renderMyMenuIconBgList();
+      renderIconPreview();
     });
   });
 }
@@ -3151,7 +2319,14 @@ if (btnResetCoinsQuests) {
 applyHandInputMode();
 
 // カードを確定して出す（クリック確定・ドラッグ&ドロップ共通の着地点）
+// 手を出してからstartJankenScene()が呼ばれるまで600ms空くため、その間に連打されると
+// 二重に手が確定してじゃんけんが2回発生するバグがあった。ロックで二重発火を防ぐ。
+let handCommitted = false;
+
 function commitHand(card, hand) {
+  if (handCommitted) return;
+  handCommitted = true;
+
   card.classList.add("fly-away");
   seCardFly.currentTime = 0;
   seCardFly.play();
@@ -3185,6 +2360,7 @@ document.querySelectorAll(".hand-card").forEach(card => {
   // カードを押したとき（クリックモードのときだけ有効）
   card.addEventListener("click", () => {
     if (handInputMode !== "click") return;
+    if (handCommitted) return;
 
     const hand = Number(card.dataset.hand);
 
@@ -3354,7 +2530,7 @@ function startJankenScene(playerHand) {
 
         playerCard.src = `./images/hands/${handImg[playerHand]}.png`;
         cpuCard.src = `./images/hands/${handImg[cpuHand]}.png`;
-        battleTurn(playerHand, cpuHand);
+        battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute, cpuAttribute);
       });
       return;
     }
@@ -3368,7 +2544,7 @@ function startJankenScene(playerHand) {
     cpuCard.src = `./images/hands/${handImg[cpuHand]}.png`;
 
     // 勝敗処理へ
-    battleTurn(playerHand, cpuHand);
+    battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute, cpuAttribute);
 
   }, 1400 + cutInDelay);
 }
@@ -3415,400 +2591,23 @@ function handlePlayerDefeated() {
   }, 500);
 }
 
-// 毒(DOT)の状態を防御側に付与/更新する。既に毒が残っている場合はダメージ+1・継続ターン数を3にリセットする
-function applyPoison(defenderState) {
-  defenderState.poisonDamage = defenderState.poisonTurnsLeft > 0
-    ? (defenderState.poisonDamage || 0) + 1
-    : 1;
-  defenderState.poisonTurnsLeft = 3;
-}
 
-// 毒のDOTを1ターン分ティックする（毎ターン両者に対して呼ぶ）
-function tickPoison(state) {
-  if (!state.poisonTurnsLeft) return 0;
-  const dealt = Math.min(state.poisonDamage, state.hp);
-  state.hp = Math.max(0, state.hp - state.poisonDamage);
-  state.poisonTurnsLeft--;
-  if (state.poisonTurnsLeft <= 0) {
-    state.poisonDamage = 0;
-  }
-  return dealt; // 実際に削れたHP量を返し、UIのポップアップ表示に使う
-}
 
-// ギャンブラーの確変（パワー消費なしの4ターン）の残りターンを1ターン分減らす
-function tickGamblerKakuhen(state) {
-  if (state.gamblerKakuhenTurns > 0) {
-    state.gamblerKakuhenTurns--;
-  }
-}
-
-function battleTurn(playerHand, cpuHand) {
-  console.log("playerHand:", playerHand, "cpuHand:", cpuHand, "result:", (playerHand - cpuHand + 3) % 3);
-
-  // 「ぽん！」と同時に暗転(darkOverlay)を解除し、HPバーの変化がすぐ見えるようにする。
-  // これまでは800ms後のendJankenScene()まで暗転が残り、HP更新が遅れて見えていた。
-  // じゃんけんの手札カード演出自体(jankenScene)は従来どおりendJankenScene()で片付ける。
+// ▼ battleTurn()(js/battle.js)にDIで渡すための小さなDOM操作(元はbattleTurn内にインラインで書かれていた)
+function hideDarkOverlay() {
   document.getElementById("darkOverlay").classList.remove("show");
-
-  // ★ ターン開始時のチャージを記録
-  const playerChargeAtStart = playerState.thunderCharge;
-  const cpuChargeAtStart = cpuState.thunderCharge;
-
-  // 手の名前
-  const handName = ["グー", "パー", "チョキ"];
-
-  // 手を出した回数のクエスト用トラッキング(グー/パー/チョキ)
-  incrementStat(`handUseCount.${["rock", "paper", "scissors"][playerHand]}`);
-
-  // プレイヤーの手表示
-  document.getElementById("playerHandImg").src =
-    `./images/hands/${["R","P","S"][playerHand]}.png`;
-  document.getElementById("playerHandText").innerText =
-    `あなた：${handName[playerHand]}`;
-
-  // CPUの手表示
-  document.getElementById("cpuHandImg").src =
-    `./images/hands/${["R","P","S"][cpuHand]}.png`;
-  document.getElementById("cpuHandText").innerText =
-    `CPU：${handName[cpuHand]}`;
-
-  // 手を出すたびに発火する属性フック（風の風速計算などに使用）
-  if (ATTR_LOGIC[playerAttribute].onHandPlayed) {
-    ATTR_LOGIC[playerAttribute].onHandPlayed(playerState, playerHand);
-  }
-  if (ATTR_LOGIC[cpuAttribute].onHandPlayed) {
-    ATTR_LOGIC[cpuAttribute].onHandPlayed(cpuState, cpuHand);
-  }
-
-  // 「疾風怒濤」クエスト：風属性の風速(0〜3)のピーク値
-  if (playerAttribute === "wind") {
-    updateQuestProgress("windGust", playerState.windSpeed);
-  }
-
-  // 呪いを受けている側がパーを出すと、呪いスタック数分のダメージ（付与した側の属性に関わらず発動）
-  if (playerHand === 1 && playerState.curseStacks > 0) {
-    playerState.hp = Math.max(0, playerState.hp - playerState.curseStacks);
-    showDamageNumber("player", playerState.curseStacks);
-  }
-  if (cpuHand === 1 && cpuState.curseStacks > 0) {
-    cpuState.hp = Math.max(0, cpuState.hp - cpuState.curseStacks);
-    showDamageNumber("cpu", cpuState.curseStacks);
-  }
-
-  // ▼ パーならパワー+1（最大値でストップ）
-  // 相手が氷属性で凍結準備(freezeReady)中なら、パワー上昇を無効化して凍結を消費する
-  let playerPowerFrozen = false;
-  let cpuPowerFrozen = false;
-
-  if (playerHand === 1) {
-    if (cpuAttribute === "ice" && cpuState.freezeReady) {
-      playerPowerFrozen = true;
-      cpuState.freezeReady = false;
-    } else {
-      const paperGain = ATTR_LOGIC[playerAttribute].paperGain || 1;
-      playerState.power = Math.min(playerState.power + paperGain, playerState.maxPower);
-    }
-  }
-  if (cpuHand === 1) {
-    if (playerAttribute === "ice" && playerState.freezeReady) {
-      cpuPowerFrozen = true;
-      playerState.freezeReady = false;
-    } else {
-      const cpuPaperGain = ATTR_LOGIC[cpuAttribute].paperGain || 1;
-      cpuState.power = Math.min(cpuState.power + cpuPaperGain, cpuState.maxPower);
-    }
-  }
-
-  // 「永久凍土」クエスト：自分(氷属性)がCPUを凍結させた回数(1戦闘内の最大値)
-  if (cpuPowerFrozen) {
-    freezeCountThisBattle++;
-    updateQuestProgress("permafrost", freezeCountThisBattle);
-    incrementStat("freezeCount"); // 通算の凍結回数クエスト用
-  }
-
-  // ▼ グーでパワー消費できるか判定（消費量は属性ごとにATTR_LOGIC[attr].powerCostで上書き可能、未指定なら2。固定値でも現在パワーに応じた関数でもよい）
-  let playerUsedPower = false;
-  let cpuUsedPower = false;
-
-  const playerPowerCost = getPowerCost(playerAttribute, playerState);
-  const cpuPowerCost = getPowerCost(cpuAttribute, cpuState);
-
-  // 判定はcanUsePower()に集約（ギャンブラーの確変中などデフォルト条件と異なる属性はここで上書きされる）
-  if (playerHand === 0 && canUsePower(playerAttribute, playerState, playerPowerCost)) playerUsedPower = true;
-  if (cpuHand === 0 && canUsePower(cpuAttribute, cpuState, cpuPowerCost)) cpuUsedPower = true;
-
-  // ▼ 勝敗判定
-  const result = (playerHand - cpuHand + 3) % 3;
-
-  // 勝敗が決まった瞬間に画面中央へ大きくWIN!/LOSE!/DRAW!を出す
-  showBigResultText(result === 1 ? "win" : result === 2 ? "lose" : "draw");
-
-  if (result === 1) {
-    let damage = calcDamage(
-      playerState,
-      cpuState,
-      playerHand,
-      cpuHand,
-      playerAttribute,
-      playerUsedPower,
-      cpuAttribute,
-      playerPowerCost
-    );
-
-     if (playerAttribute === "thunder" && playerChargeAtStart === 5) {
-      playerState.thunderCharge = 3;
-  }
-  
-     if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
-      cpuState.thunderCharge = 3;
-  }
-
-
-
-    cpuState.hp -= damage;
-   
-
-    if (ATTR_LOGIC[cpuAttribute].onHpChange) {
-      ATTR_LOGIC[cpuAttribute].onHpChange(cpuState);
-    }
-
-    if (ATTR_LOGIC[playerAttribute].onWin) {
-      const playerHeal = ATTR_LOGIC[playerAttribute].onWin(playerState, playerHand, playerUsedPower, damage, cpuState);
-      if (playerHeal) showDamageNumber("player", playerHeal, { heal: true });
-
-      // 「血の匂い」クエスト：吸血属性の1回の回復量のピーク値
-      if (playerAttribute === "vampire" && playerHeal) {
-        updateQuestProgress("vampireThirst", playerHeal);
-      }
-    }
-
-    // 「雷騰雲奔」クエスト：雷属性での一撃ダメージ
-    if (playerAttribute === "thunder") {
-      updateQuestProgress("thunderBolt", damage);
-    }
-
-    // 属性ごとの固有クエスト(1戦闘内のピーク値方式)
-    if (playerAttribute === "poison") {
-      updateQuestProgress("poisonQueen", cpuState.poisonDamage);
-    }
-    if (playerAttribute === "fighter" && playerHand === 2) {
-      fighterScissorsWinCountThisBattle++;
-      updateQuestProgress("fighterBlade", fighterScissorsWinCountThisBattle);
-    }
-    if (playerAttribute === "cannon") {
-      updateQuestProgress("cannonBlast", damage);
-    }
-    if (playerAttribute === "gambler") {
-      updateQuestProgress("gamblerJackpot", damage);
-    }
-    if (playerAttribute === "berserker") {
-      berserkerDamageThisBattle += damage;
-      updateQuestProgress("berserkerRampage", berserkerDamageThisBattle);
-    }
-
-    // 属性別・通算系の統計クエスト用トラッキング(勝利数・与ダメージ・高火力ヒット)
-    if (getStatByPath(`winsByAttribute.${playerAttribute}`) === 0) {
-      incrementStat("attributesWonCount");
-    }
-    incrementStat(`winsByAttribute.${playerAttribute}`);
-    incrementStat(`damageByAttribute.${playerAttribute}`, damage);
-    incrementStat("totalDamageDealt", damage);
-    if (damage >= 10) incrementStat("highDamageHits");
-    if (playerAttribute === "poison") incrementStat("poisonApplyCount");
-
-    // プロフィール画面用：じゃんけん1回ごとの勝敗・手ごとの勝率トラッキング
-    incrementStat("roundWinCount");
-    incrementStat(`handWinCount.${["rock", "paper", "scissors"][playerHand]}`);
-
-    playCpuDamageEffect(damage);
-
-    // 10ダメージ以上を与えた瞬間は、通常の演出に加えてさらに派手なフラッシュ・シェイク・SEを重ねる
-    if (damage >= 10) {
-      playBigImpactEffect();
-    }
-
-    if (cpuState.hp <= 0) {
-      handleCpuDefeated();
-      return;
-    }
-
-    document.getElementById("resultText").innerText =
-      `勝ち！ CPUに${damage}ダメージ！` +
-      (cpuPowerFrozen ? "（CPUは氷で凍結され、パワー上昇が無効化された）" : "");
-
-  } else if (result === 2) {
-
-    let cpudamage = calcDamage(
-      cpuState,
-      playerState,
-      cpuHand,
-      playerHand,
-      cpuAttribute,
-      cpuUsedPower,
-      playerAttribute,
-      cpuPowerCost
-    );
-
-     if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
-      cpuState.thunderCharge = 3;
-  }
-     if (playerAttribute === "thunder" && playerChargeAtStart === 5) {
-      playerState.thunderCharge = 3;
-  }
-
-    playerState.hp -= cpudamage;
-
-    if (ATTR_LOGIC[playerAttribute].onHpChange) {
-      ATTR_LOGIC[playerAttribute].onHpChange(playerState);
-    }
-
-    if (ATTR_LOGIC[cpuAttribute].onWin) {
-      const cpuHeal = ATTR_LOGIC[cpuAttribute].onWin(cpuState, cpuHand, cpuUsedPower, cpudamage, playerState);
-      if (cpuHeal) showDamageNumber("cpu", cpuHeal, { heal: true });
-    }
-
-    incrementStat("totalDamageTaken", cpudamage);
-    incrementStat("roundLossCount");
-
-    playDamageEffect(cpudamage);
-
-    if (playerState.hp <= 0) {
-      handlePlayerDefeated();
-      return;
-    }
-
-    document.getElementById("resultText").innerText =
-      `負け… あなたに${cpudamage}ダメージ` +
-      (playerPowerFrozen ? "（あなたは氷で凍結され、パワー上昇が無効化された）" : "");
-
-
-
-  } else {
-    incrementStat("drawCount");
-
-    let drawNote = "";
-    if (playerPowerFrozen) drawNote += "（あなたは氷で凍結され、パワー上昇が無効化された）";
-    if (cpuPowerFrozen) drawNote += "（CPUは氷で凍結され、パワー上昇が無効化された）";
-    document.getElementById("resultText").innerText = "あいこ" + drawNote;
-
-    // あいこ時に発火する属性フック（水のHP回復/パワー増加、ドッペルゲンガーの反撃ダメージなど）
-    // 戻り値は { damage: 相手へのダメージ } か { heal: 自分の回復量 } のどちらか
-    if (ATTR_LOGIC[playerAttribute].onDraw) {
-      const result = ATTR_LOGIC[playerAttribute].onDraw(playerState, cpuState);
-      if (result && result.damage) showDamageNumber("cpu", result.damage);
-      if (result && result.heal) showDamageNumber("player", result.heal, { heal: true });
-
-      // 「泉の恵み」クエスト：水属性が1戦闘中にあいこで回復した回数
-      if (playerAttribute === "water" && result && result.heal) {
-        waterHealCountThisBattle++;
-        updateQuestProgress("waterBlessing", waterHealCountThisBattle);
-      }
-      // 「鏡合わせの狂気」クエスト：ドッペルゲンガー属性のあいこ回数のピーク値
-      if (playerAttribute === "doppel") {
-        updateQuestProgress("doppelMadness", playerState.doppelDrawCount);
-      }
-    }
-    if (ATTR_LOGIC[cpuAttribute].onDraw) {
-      const result = ATTR_LOGIC[cpuAttribute].onDraw(cpuState, playerState);
-      if (result && result.damage) showDamageNumber("player", result.damage);
-      if (result && result.heal) showDamageNumber("cpu", result.heal, { heal: true });
-    }
-
-    if (playerAttribute === "thunder" && playerChargeAtStart === 5) {
-    playerState.thunderCharge = 3;
 }
-if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
-    cpuState.thunderCharge = 3;
+function renderPlayerHand(hand) {
+  document.getElementById("playerHandImg").src = `./images/hands/${["R", "P", "S"][hand]}.png`;
+  document.getElementById("playerHandText").innerText = `あなた：${["グー", "パー", "チョキ"][hand]}`;
 }
-
-
-  }
-
-  // ▼ 毒のDOT処理（このターンの勝敗に関わらず、毎ターン両者に対して発動）
-  const playerPoisonDmg = tickPoison(playerState);
-  const cpuPoisonDmg = tickPoison(cpuState);
-  if (playerPoisonDmg) showDamageNumber("player", playerPoisonDmg);
-  if (cpuPoisonDmg) showDamageNumber("cpu", cpuPoisonDmg);
-
-  // ▼ ギャンブラーの確変ターン経過（このターンの勝敗に関わらず、毎ターン両者に対して発動）
-  tickGamblerKakuhen(playerState);
-  tickGamblerKakuhen(cpuState);
-
-  // ▼ 属性固有の毎ターン処理（バーサーカーの自傷など、このターンの勝敗に関わらず発動）
-  if (ATTR_LOGIC[playerAttribute].onTurnEnd) {
-    const playerTurnEndDmg = ATTR_LOGIC[playerAttribute].onTurnEnd(playerState);
-    if (playerTurnEndDmg) showDamageNumber("player", playerTurnEndDmg);
-  }
-  if (ATTR_LOGIC[cpuAttribute].onTurnEnd) {
-    const cpuTurnEndDmg = ATTR_LOGIC[cpuAttribute].onTurnEnd(cpuState);
-    if (cpuTurnEndDmg) showDamageNumber("cpu", cpuTurnEndDmg);
-  }
-
-  // ▼ 毒のDOTやあいこ時の反撃（ドッペルゲンガー等）、バーサーカーの自傷でHPが0以下になっていないか確認
-  if (cpuState.hp <= 0) {
-    handleCpuDefeated();
-    return;
-  }
-  if (playerState.hp <= 0) {
-    handlePlayerDefeated();
-    return;
-  }
-
-  // ▼ パワー消費
-  if (playerUsedPower) playerState.power -= playerPowerCost;
-  if (cpuUsedPower) cpuState.power -= cpuPowerCost;
-
-  // ▼ チャージ増加（ターン終了時）
-  if (playerUsedPower && ATTR_LOGIC[playerAttribute].onPowerUse) {
-    const playerPowerUseResult = ATTR_LOGIC[playerAttribute].onPowerUse(playerState, cpuState);
-    if (playerPowerUseResult && playerPowerUseResult.heal) {
-      showDamageNumber("player", playerPowerUseResult.heal, { heal: true });
-    }
-
-    // 「爆炎」クエスト：炎属性の攻撃力上昇
-    if (playerAttribute === "fire") {
-      updateQuestProgress("fireBurst", playerState.fireAtkBonus);
-    }
-
-    // 呪術：パワー消費のたびに相手へ呪いを付与するため、通算の付与回数クエスト用にカウント
-    if (playerAttribute === "curse") {
-      incrementStat("curseApplyCount");
-      // 「呪いの深淵」クエスト：相手の呪いスタックのピーク値
-      updateQuestProgress("curseAbyss", cpuState.curseStacks);
-    }
-
-    // 「岩盤の守り」クエスト：石属性が1戦闘中にパワーを消費した回数のピーク値
-    if (playerAttribute === "stone") {
-      updateQuestProgress("stoneGuard", playerState.stoneUseCount);
-    }
-
-    // 「大魔導の極意」クエスト：マジシャン属性の永続攻撃力上昇のピーク値
-    if (playerAttribute === "magician") {
-      updateQuestProgress("magicianMastery", playerState.magicianAtkBonus);
-    }
-  }
-  if (cpuUsedPower && ATTR_LOGIC[cpuAttribute].onPowerUse) {
-    const cpuPowerUseResult = ATTR_LOGIC[cpuAttribute].onPowerUse(cpuState, playerState);
-    if (cpuPowerUseResult && cpuPowerUseResult.heal) {
-      showDamageNumber("cpu", cpuPowerUseResult.heal, { heal: true });
-    }
-  }
-
-  // ▼ UI更新
-  updateBattleUI();
-  setupPlayerStatusWindow();
-  setupCpuStatusWindow();
-
-  // ▼ ターン終了処理
-  setTimeout(() => {
-    endJankenScene();
-
-  
-
-  }, 800);
+function renderCpuHand(hand) {
+  document.getElementById("cpuHandImg").src = `./images/hands/${["R", "P", "S"][hand]}.png`;
+  document.getElementById("cpuHandText").innerText = `CPU：${["グー", "パー", "チョキ"][hand]}`;
 }
-
-
+function setResultText(text) {
+  document.getElementById("resultText").innerText = text;
+}
 
 //ui更新
 function updateBattleUI() {
