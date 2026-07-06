@@ -1339,6 +1339,7 @@ function startStoryEnemy() {
   jankenScene.style.display = "none";
   document.getElementById("winLayer").style.opacity = 0;
   resetBattleEffectsUI();
+  resetHandCards(); // handCommittedをリセットしないと2体目以降でカードが出せなくなるバグがあった
   trackAttributePlay(playerAttribute);
   // 前回オンライン対戦のシード付き乱数が残っていると、ストーリーモードでもbattleRandom()が
   // 誤ってそれを使ってしまうため、通常のMath.random()に戻す
@@ -1435,6 +1436,25 @@ function handleStoryEnemyDefeated() {
   if (hasNextEnemy) {
     renderItemCardChoice();
     showScreen("screen-item-card-select");
+  } else if (stage.clearStory) {
+    // ステージクリア後の読み物。終わったらリザルト画面へ進む。
+    // 「YOU WIN」の暗幕演出はendJankenScene()を経由せず残ったままなので先に片付ける。
+    document.getElementById("darkOverlay").classList.remove("show");
+    const jankenScene = document.getElementById("jankenScene");
+    jankenScene.classList.remove("show");
+    jankenScene.style.display = "none";
+    document.getElementById("winLayer").style.opacity = 0;
+    document.getElementById("enemy-img").classList.remove("enemyFadeOut");
+
+    stopBGM(bgmcpuBattle);
+    bgmStory.volume = currentBgmVolume;
+    bgmStory.currentTime = 0;
+    bgmStory.play();
+
+    showStoryReadScreen(stage.clearStory, () => {
+      stopBGM(bgmStory);
+      endStoryRun(true);
+    });
   } else {
     endStoryRun(true);
   }

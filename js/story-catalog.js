@@ -33,7 +33,7 @@ export const STAGE_CATALOG = {
             { speaker: "{name}", text: "おじいちゃん？話聞いてる？" },
             { speaker: "{name}", text: "というかなんでこんな煽ってくるの。" },
             { speaker: "老人", text: "その幻想を砕いてやる。\nまずはこの手を振りほどけ。\nできぬなら、裂けめどころか村の外にも出るな。" },
-            { speaker: "{name}", text: "幻想って...というか力つよおっさんなにもんだよ。" },
+            { speaker: "{name}", text: "幻想って...というか力つよ！じじいなにもんだよ。" },
             { speaker: "老人", text: "……待てよ。お前、その身に眠る力……ただの若造ではないな。" },
             { speaker: "老人", text: "ちょうどいい。眠ったままのその属性の力、少しは目覚めさせてやろう。" },
             { speaker: "老人", text: "そこの炎スライムを相手に稽古をつけてやる。まずはその力、見せてみろ。" },
@@ -46,7 +46,37 @@ export const STAGE_CATALOG = {
       },
       { name: "水スライム",   img: "./images/enemy/mizusra.png", attribute: "water",   maxHp: 18, maxPower: 2, aiType: "defensive" },
       { name: "おっきめスライム", img: "./images/enemy/akasra.png",  attribute: "thunder", maxHp: 24, maxPower: 2, aiType: "balanced" }
-    ]
+    ],
+    // clearStory: 任意。ステージの最後の敵を倒した直後、リザルト画面より前に挟む読み物。
+    clearStory: {
+      lines: [
+        { speaker: "{name}", text: "か、勝てた、というかなんだこの力" },
+        { speaker: "老人", text: "それがお前に眠る属性の力だ。その力は得ようと思って得られるものではない。親に感謝するんだな。" },
+        { speaker: "{name}", text: "（おかん…）" },
+        { speaker: "老人", text: "なんだその顔、家族と仲悪いのか" },
+        { speaker: "{name}", text: "悪くはない、と思う。たぶん" },
+        { speaker: "老人", text: "訳アリというわけか" },
+        { speaker: "{name}", text: "いや、訳ありっていうか。あんまずけずけ家庭の事情に口出すなよ。" },
+        { speaker: "老人", text: "引きこもりすぎて追い出されてきたとかか？" },
+        { speaker: "{name}", text: "ちょっと黙ろうかおじいちゃん" },
+        { speaker: "{name}", text: "んで、これでもう裂けまで行っていいですよね" },
+        { speaker: "老人", text: "まだだめじゃな。このまま行ってもひき肉かミンチにされるだけじゃ。よくてハンバーグじゃ" },
+        { speaker: "{name}", text: "（全部ひき肉じゃねぇか）" },
+        { speaker: "{name}", text: "じゃあどうしたらいってもいいんすか" },
+        { speaker: "老人", text: "どうしても裂けめまで行きたいようじゃな。その熱意はいいが、意気込みだけでは強くはなれんぞ" },
+        { speaker: "{name}", text: "だから、どうしたらいいのかって聞いてるんだけど" },
+        { speaker: "老人", text: "そう焦るな、最近の若者はすぐタイパコスパなどと言って話をろくにきとらん。だいたい…" },
+        { speaker: "{name}", text: "はいはいわかったから。早く本題を話してください" },
+        { speaker: "老人", text: "はぁ、まったく。わかったわかった。" },
+        { speaker: "老人", text: "わしについてこい。そしたらじきに分かる" },
+        { speaker: "{name}", text: "（なんだこのじじい）" },
+        { speaker: "{name}", text: "（というかよくてハンバーグっておかしいよな。火通されちゃってるじゃん）" },
+        { text: "謎の老人との修行？の旅が始まった。" },
+        { text: "{name}に待ち受ける試練とは。そして、この世界に伸びようとしている魔の手とは一体何か。" },
+        { text: "そして、老人に認められ無事に裂けめまでたどり着けるのか。" },
+        { text: "冒険はまだ、始まったばかりだ" }
+      ]
+    }
   }
 };
 
