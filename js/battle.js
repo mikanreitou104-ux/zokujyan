@@ -3,7 +3,7 @@
 // 一切直接呼ばず、setBattleCallbacks()で注入されたものだけを使う(attributes.js/save-data.jsと同じDIパターン)。
 // playerState/cpuState/playerAttribute/cpuAttributeもmain.js側のグローバルをimportするのではなく、
 // battleTurn()の引数として毎回渡してもらう(循環importを避けるため)。
-import { ATTR_LOGIC, calcDamage, getPowerCost, canUsePower, tickPoison, tickGamblerKakuhen } from "./attributes.js";
+import { ATTR_LOGIC, calcDamage, getPowerCost, canUsePower, tickPoison, tickGamblerKakuhen, applyPoison } from "./attributes.js";
 import { updateQuestProgress } from "./quests.js";
 import { getStatByPath, incrementStat } from "./save-data.js";
 
@@ -74,6 +74,16 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
     ATTR_LOGIC[cpuAttribute].onHandPlayed(cpuState, cpuHand);
   }
 
+  // ▼ アイテムカードは常にプレイヤー側のみに適用される(敵はカードを取得しない)ため、
+  // 以降の`item*`系フィールドのチェックはplayerState側にのみ書く。
+  // 「疾風の靴」：直前と違う手を出すたびにパワー+1
+  if (playerState.itemPowerOnHandChange) {
+    if (playerState.itemLastHandForBoots !== null && playerState.itemLastHandForBoots !== undefined && playerState.itemLastHandForBoots !== playerHand) {
+      playerState.power = Math.min(playerState.power + 1, playerState.maxPower);
+    }
+    playerState.itemLastHandForBoots = playerHand;
+  }
+
   // 「疾風怒濤」クエスト：風属性の風速(0〜3)のピーク値
   if (playerAttribute === "wind") {
     updateQuestProgress("windGust", playerState.windSpeed);
@@ -84,7 +94,9 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
     playerState.hp = Math.max(0, playerState.hp - playerState.curseStacks);
     callbacks.showDamageNumber("player", playerState.curseStacks);
   }
-  if (cpuHand === 1 && cpuState.curseStacks > 0) {
+  // 「古き呪いの書」：プレイヤーがこのカードを持ち、相手の呪いスタックが閾値以上ならパー限定を解除する
+  const cpuCurseAnyHand = playerState.itemCurseAnyHandThreshold && cpuState.curseStacks >= playerState.itemCurseAnyHandThreshold;
+  if ((cpuHand === 1 || cpuCurseAnyHand) && cpuState.curseStacks > 0) {
     cpuState.hp = Math.max(0, cpuState.hp - cpuState.curseStacks);
     callbacks.showDamageNumber("cpu", cpuState.curseStacks);
   }
@@ -94,21 +106,37 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
   let playerPowerFrozen = false;
   let cpuPowerFrozen = false;
 
+  // freezeReadyは元々「氷属性onWinのみが立てるフラグ」だったが、アイテムカード「凍える吐息」が
+  // 属性を問わず同じフラグを立てられるようにしたため、attribute==="ice"のゲートは外し
+  // フラグの有無だけで判定する(freezeReadyを立てる経路がice.onWinとこのカードの2つになった)。
   if (playerHand === 1) {
-    if (cpuAttribute === "ice" && cpuState.freezeReady) {
+    if (cpuState.freezeReady) {
       playerPowerFrozen = true;
       cpuState.freezeReady = false;
     } else {
-      const paperGain = ATTR_LOGIC[playerAttribute].paperGain || 1;
-      playerState.power = Math.min(playerState.power + paperGain, playerState.maxPower);
+      const paperGain = (ATTR_LOGIC[playerAttribute].paperGain || 1) + (playerState.itemPaperGainBonus || 0);
+      const playerNewPower = playerState.power + paperGain;
+      // 「貯蓄の心得」：パワー上限を超えた分をHP回復に変換する
+      if (playerState.itemOverflowPowerToHeal && playerNewPower > playerState.maxPower) {
+        const overflow = playerNewPower - playerState.maxPower;
+        const healed = Math.min(overflow, playerState.maxHp - playerState.hp);
+        playerState.hp = Math.min(playerState.hp + overflow, playerState.maxHp);
+        if (healed > 0) callbacks.showDamageNumber("player", healed, { heal: true });
+      }
+      playerState.power = Math.min(playerNewPower, playerState.maxPower);
     }
   }
   if (cpuHand === 1) {
-    if (playerAttribute === "ice" && playerState.freezeReady) {
+    if (playerState.freezeReady) {
       cpuPowerFrozen = true;
       playerState.freezeReady = false;
+      // 「氷結の残響」：チャージが残っていれば凍結を立て直し、次のパー獲得も無効化する
+      if (playerState.iceEchoCharges > 0) {
+        playerState.iceEchoCharges--;
+        playerState.freezeReady = true;
+      }
     } else {
-      const cpuPaperGain = ATTR_LOGIC[cpuAttribute].paperGain || 1;
+      const cpuPaperGain = (ATTR_LOGIC[cpuAttribute].paperGain || 1) + (cpuState.itemPaperGainBonus || 0);
       cpuState.power = Math.min(cpuState.power + cpuPaperGain, cpuState.maxPower);
     }
   }
@@ -124,11 +152,19 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
   let playerUsedPower = false;
   let cpuUsedPower = false;
 
-  const playerPowerCost = getPowerCost(playerAttribute, playerState);
+  let playerPowerCost = getPowerCost(playerAttribute, playerState);
   const cpuPowerCost = getPowerCost(cpuAttribute, cpuState);
 
+  // 「賭け金の証」：直前の敗北で予約されていれば、今回のグーのパワー消費コストを0にする(1回限り)
+  let playerFreeCostActive = false;
+  if (playerHand === 0 && playerState.itemFreeCostPending) {
+    playerFreeCostActive = true;
+    playerPowerCost = 0;
+    playerState.itemFreeCostPending = false;
+  }
+
   // 判定はcanUsePower()に集約（ギャンブラーの確変中などデフォルト条件と異なる属性はここで上書きされる）
-  if (playerHand === 0 && canUsePower(playerAttribute, playerState, playerPowerCost)) playerUsedPower = true;
+  if (playerHand === 0 && (playerFreeCostActive || canUsePower(playerAttribute, playerState, playerPowerCost))) playerUsedPower = true;
   if (cpuHand === 0 && canUsePower(cpuAttribute, cpuState, cpuPowerCost)) cpuUsedPower = true;
 
   // ▼ 勝敗判定
@@ -149,18 +185,37 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       playerPowerCost
     );
 
-     if (playerAttribute === "thunder" && playerChargeAtStart === 5) {
+     if (playerAttribute === "thunder" && playerChargeAtStart === (playerState.thunderChargeMax || 5)) {
       playerState.thunderCharge = 3;
   }
 
-     if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
+     if (cpuAttribute === "thunder" && cpuChargeAtStart === (cpuState.thunderChargeMax || 5)) {
       cpuState.thunderCharge = 3;
   }
 
-
+    // 「影のささやき」：一定確率で追加1ダメージ
+    if (playerState.itemExtraDmgChanceOnHit && Math.random() < playerState.itemExtraDmgChanceOnHit) {
+      damage += 1;
+    }
 
     cpuState.hp -= damage;
 
+    // 「捨て身の一撃」：グーでのボーナスダメージを得た代償に、与ダメージの半分を自分も被弾する
+    if (playerHand === 0 && playerState.itemRockAtkBonus) {
+      const recoil = Math.floor(damage / 2);
+      playerState.hp = Math.max(0, playerState.hp - recoil);
+      if (recoil > 0) callbacks.showDamageNumber("player", recoil);
+    }
+
+    // 「小瓶の毒」：勝利時に相手へ毒1スタックを追加する
+    if (playerState.itemPoisonOnWin) {
+      applyPoison(cpuState);
+    }
+
+    // 「凍える吐息」：一定確率で相手の次のパー獲得を無効化する(氷のfreezeReadyを流用)
+    if (playerState.itemFreezeChanceOnWin && Math.random() < playerState.itemFreezeChanceOnWin) {
+      playerState.freezeReady = true;
+    }
 
     if (ATTR_LOGIC[cpuAttribute].onHpChange) {
       ATTR_LOGIC[cpuAttribute].onHpChange(cpuState);
@@ -245,10 +300,10 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       cpuPowerCost
     );
 
-     if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
+     if (cpuAttribute === "thunder" && cpuChargeAtStart === (cpuState.thunderChargeMax || 5)) {
       cpuState.thunderCharge = 3;
   }
-     if (playerAttribute === "thunder" && playerChargeAtStart === 5) {
+     if (playerAttribute === "thunder" && playerChargeAtStart === (playerState.thunderChargeMax || 5)) {
       playerState.thunderCharge = 3;
   }
 
@@ -266,6 +321,11 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
     incrementStat("totalDamageTaken", cpudamage);
     incrementStat("roundLossCount");
     callbacks.onRoundResult("loss");
+
+    // 「賭け金の証」：敗北した次の1回、グーのパワー消費コストが無料になる予約を立てる
+    if (playerState.itemFreeCostEnabled) {
+      playerState.itemFreeCostPending = true;
+    }
 
     callbacks.playDamageEffect(cpudamage);
 
@@ -313,10 +373,22 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       if (result && result.heal) callbacks.showDamageNumber("cpu", result.heal, { heal: true });
     }
 
-    if (playerAttribute === "thunder" && playerChargeAtStart === 5) {
+    // 「老練の心得」：あいこ時パワー+1
+    if (playerState.itemPowerOnDraw) {
+      playerState.power = Math.min(playerState.power + 1, playerState.maxPower);
+    }
+
+    // 「蜘蛛の糸」：あいこの時、相手のパワーを1奪う
+    if (playerState.itemPowerStealOnDraw && cpuState.power > 0) {
+      const stolen = Math.min(1, cpuState.power);
+      cpuState.power = Math.max(0, cpuState.power - stolen);
+      playerState.power = Math.min(playerState.power + stolen, playerState.maxPower);
+    }
+
+    if (playerAttribute === "thunder" && playerChargeAtStart === (playerState.thunderChargeMax || 5)) {
     playerState.thunderCharge = 3;
 }
-if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
+if (cpuAttribute === "thunder" && cpuChargeAtStart === (cpuState.thunderChargeMax || 5)) {
     cpuState.thunderCharge = 3;
 }
 
@@ -332,6 +404,17 @@ if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
   // ▼ ギャンブラーの確変ターン経過（このターンの勝敗に関わらず、毎ターン両者に対して発動）
   tickGamblerKakuhen(playerState);
   tickGamblerKakuhen(cpuState);
+
+  // 「巡礼の杖」：勝敗に関わらず3ターンごとにHPが2回復する
+  if (playerState.itemPilgrimStaffActive) {
+    playerState.itemPilgrimStaffTurns = (playerState.itemPilgrimStaffTurns || 0) + 1;
+    if (playerState.itemPilgrimStaffTurns >= 3) {
+      playerState.itemPilgrimStaffTurns = 0;
+      const healed = Math.min(2, playerState.maxHp - playerState.hp);
+      playerState.hp = Math.min(playerState.hp + 2, playerState.maxHp);
+      if (healed > 0) callbacks.showDamageNumber("player", healed, { heal: true });
+    }
+  }
 
   // ▼ 属性固有の毎ターン処理（バーサーカーの自傷など、このターンの勝敗に関わらず発動）
   if (ATTR_LOGIC[playerAttribute].onTurnEnd) {
@@ -356,6 +439,12 @@ if (cpuAttribute === "thunder" && cpuChargeAtStart === 5) {
   // ▼ パワー消費
   if (playerUsedPower) playerState.power -= playerPowerCost;
   if (cpuUsedPower) cpuState.power -= cpuPowerCost;
+
+  // 「呪いの人形」：属性に関わらず、パワー消費のたびに相手へ呪いを+1する
+  // (ATTR_LOGIC[attr].onPowerUseが無い属性でも発動するよう、専用の分岐にしている)
+  if (playerUsedPower && playerState.itemCurseOnPowerUse) {
+    cpuState.curseStacks = (cpuState.curseStacks || 0) + 1;
+  }
 
   // ▼ チャージ増加（ターン終了時）
   if (playerUsedPower && ATTR_LOGIC[playerAttribute].onPowerUse) {

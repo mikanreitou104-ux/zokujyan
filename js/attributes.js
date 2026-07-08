@@ -124,8 +124,24 @@ export function baseDamage(hand, usedPower, attribute, attackerState, powerCost)
 
 // 属性補正計算
 
-export function attributeBonus(state, hand, attribute) {
+export function attributeBonus(state, hand, attribute, usedPower) {
     let bonus = 0;
+
+    // ▼ 属性を問わず加算される汎用ボーナス(アイテムカード用)
+    bonus += (state.genericAtkBonus || 0);
+
+    // ▼ HPが最大の50%以下の間だけ加算される汎用ボーナス(アイテムカード「背水の誓い」用)
+    if (state.itemLowHpAtkBonus && state.hp <= state.maxHp / 2) {
+        bonus += state.itemLowHpAtkBonus;
+    }
+
+    // ▼ グー限定で加算される汎用ボーナス(アイテムカード「捨て身の一撃」「一点賭けの証」用)
+    if (hand === 0) {
+        bonus += (state.itemRockAtkBonus || 0);
+        if (usedPower) {
+            bonus += (state.itemPowerAtkBonus || 0);
+        }
+    }
 
     // ▼ 炎
     if (attribute === "fire") {
@@ -141,12 +157,13 @@ export function attributeBonus(state, hand, attribute) {
         }
     }
 
-    // ▼ 雷
+    // ▼ 雷（アイテムカード「予備電池」でチャージ上限自体を5→7等に引き上げられる）
     if (attribute === "thunder") {
-        if (state.thunderCharge >= 3 && state.thunderCharge < 5) {
+        const chargeMax = state.thunderChargeMax || 5;
+        if (state.thunderCharge >= 3 && state.thunderCharge < chargeMax) {
             bonus += 1;
         }
-        if (state.thunderCharge === 5) {
+        if (state.thunderCharge === chargeMax) {
             bonus += 10;
         }
     }
@@ -156,9 +173,9 @@ export function attributeBonus(state, hand, attribute) {
         bonus += (state.stoneAtkBonus || 0);
     }
 
-    // ▼ 風（風速3のとき火力上昇）
+    // ▼ 風（風速3のとき火力上昇。アイテムカード「暴風の残滓」で+4のボーナス自体を底上げできる）
     if (attribute === "wind" && state.windSpeed === 3) {
-        bonus += 4;
+        bonus += 4 + (state.itemWindMaxSpeedBonusExtra || 0);
     }
 
     // ▼ マジシャン（パワー消費でランダムに積み上がる永続攻撃力）
@@ -172,6 +189,9 @@ export function attributeBonus(state, hand, attribute) {
 // 防御側の被ダメージ軽減計算
 export function damageReduction(state, attribute) {
     let reduction = 0;
+
+    // ▼ 属性を問わず軽減される汎用ボーナス(アイテムカード用)
+    reduction += (state.genericDefReduction || 0);
 
     // ▼ 石
     if (attribute === "stone") {
@@ -212,7 +232,7 @@ export function calcDamage(
     let damage = baseDamage(attackerHand, usedPower, attackerAttribute, attackerState, attackerPowerCost);
 
     // ② 属性補正
-    damage += attributeBonus(attackerState, attackerHand, attackerAttribute);
+    damage += attributeBonus(attackerState, attackerHand, attackerAttribute, usedPower);
 
     // ③ ローグライク補正（今はまだ0）
     damage += roguelikeBonus(attackerState);
@@ -230,7 +250,7 @@ export function previewAttackDamage(attackerState, defenderState, hand, attacker
     const usedPower = hand === 0 && canUsePower(attackerAttribute, attackerState, cost);
 
     let damage = baseDamage(hand, usedPower, attackerAttribute, attackerState, cost);
-    damage += attributeBonus(attackerState, hand, attackerAttribute);
+    damage += attributeBonus(attackerState, hand, attackerAttribute, usedPower);
     damage += roguelikeBonus(attackerState);
     damage -= damageReduction(defenderState, defenderAttribute);
 
@@ -367,6 +387,13 @@ export const ATTR_LOGIC = {
         player.fireRage = true;
       }
     },
+    // ストーリーモードは敵が変わってもプレイヤー側はinitAttribute()を呼び直さないため、
+    // fireAtkBonus/fireRageを放っておくと連戦するほど無制限に強くなってしまう。
+    // main.js側のstartStoryEnemy()が次の敵に切り替わるたびにこれを呼び、他属性と足並みを揃える。
+    onNewBattle(player) {
+      player.fireAtkBonus = 0;
+      player.fireRage = false;
+    },
     getStatus(player) {
       return [
         { label: "攻撃力上昇", value: `+${player.fireAtkBonus}` },
@@ -382,11 +409,13 @@ export const ATTR_LOGIC = {
     },
     onPowerUse(player) {
       player.thunderCharge++;
-      if (player.thunderCharge > 5) player.thunderCharge = 5;
+      const chargeMax = player.thunderChargeMax || 5;
+      if (player.thunderCharge > chargeMax) player.thunderCharge = chargeMax;
     },
     getStatus(player) {
+      const chargeMax = player.thunderChargeMax || 5;
       return [
-        { label: "チャージ", value: `${player.thunderCharge} / 5` }
+        { label: "チャージ", value: `${player.thunderCharge} / ${chargeMax}` }
       ];
     }
   },
@@ -440,9 +469,12 @@ export const ATTR_LOGIC = {
       // 追加の状態は持たない（hp/powerは既存フィールドを流用）
     },
     onDraw(player) {
-      const healAmount = Math.min(3, player.maxHp - player.hp);
-      player.hp = Math.min(player.hp + 3, player.maxHp);
-      player.power = Math.min(player.power + 1, player.maxPower);
+      // アイテムカード「湧き水の加護」「氷解の記憶」で回復量/パワー獲得量を底上げできる
+      const healBase = 3 + (player.itemWaterHealBonus || 0);
+      const powerBase = 1 + (player.itemWaterPowerBonus || 0);
+      const healAmount = Math.min(healBase, player.maxHp - player.hp);
+      player.hp = Math.min(player.hp + healBase, player.maxHp);
+      player.power = Math.min(player.power + powerBase, player.maxPower);
       return { heal: healAmount }; // UIのポップアップ表示に使う
     },
     getBaseDamage(hand, usedPower) {
@@ -491,15 +523,19 @@ export const ATTR_LOGIC = {
     init(player) {
       // 追加の状態は持たない（hp/powerは既存フィールドを流用）
     },
-    powerCost: 1,   // グーのパワー消費量（通常は2）
+    // グーのパワー消費量（通常は2）。アイテムカード「拳聖の証」でさらに-1できる(最低0)
+    powerCost(state) {
+      return Math.max(0, 1 - (state.itemFighterPowerCostReduction || 0));
+    },
     paperGain: 2,   // パーで得るパワー量（通常は1）
-    getBaseDamage(hand, usedPower) {
-      if (hand === 2) return 5; // チョキは固定5ダメージ
+    getBaseDamage(hand, usedPower, attackerState) {
+      // チョキは固定5ダメージ(アイテムカード「乱打の心得」で底上げ可能)
+      if (hand === 2) return 5 + (attackerState.itemFighterScissorsBonus || 0);
       return null; // グー・パーは通常計算に任せる
     },
     getStatus(player) {
       return [
-        { label: "グー消費パワー", value: "1" },
+        { label: "グー消費パワー", value: `${Math.max(0, 1 - (player.itemFighterPowerCostReduction || 0))}` },
         { label: "パー獲得パワー", value: "+2" }
       ];
     }
@@ -513,6 +549,13 @@ export const ATTR_LOGIC = {
     },
     onWin(player, hand, usedPower, damage, defenderState) {
       applyPoison(defenderState);
+      // アイテムカード「猛毒の秘薬」「延命の毒草」で初期ダメージ/持続ターンを底上げできる
+      if (player.itemPoisonInitialBonus) {
+        defenderState.poisonDamage += player.itemPoisonInitialBonus;
+      }
+      if (player.itemPoisonDurationBonus) {
+        defenderState.poisonTurnsLeft += player.itemPoisonDurationBonus;
+      }
     },
     getStatus(player) {
       return [
@@ -526,12 +569,15 @@ export const ATTR_LOGIC = {
     init(player) {
       // 追加の状態は持たない（hp/powerは既存フィールドを流用）
     },
-    getBaseDamage(hand, usedPower) {
-      if (hand === 0 && usedPower) return 5; // グー(パワー消費時)は固定5ダメージ
+    getBaseDamage(hand, usedPower, attackerState) {
+      // グー(パワー消費時)は固定5ダメージ(アイテムカード「牙の刻印」で底上げ可能)
+      if (hand === 0 && usedPower) return 5 + (attackerState.itemVampireRockBonus || 0);
       return null;
     },
     onWin(player, hand, usedPower, damage) {
-      const healAmount = Math.floor(damage / 2);
+      // アイテムカード「深紅の渇き」で回復率(通常50%)を底上げできる
+      const healRate = 0.5 + (player.itemVampireHealRateBonus || 0);
+      const healAmount = Math.floor(damage * healRate);
       const actualHeal = Math.min(healAmount, player.maxHp - player.hp);
       player.hp = Math.min(player.hp + healAmount, player.maxHp);
       return actualHeal; // 実際に回復した量を返し、UIのポップアップ表示に使う
@@ -550,17 +596,21 @@ export const ATTR_LOGIC = {
     },
     onDraw(player, opponent) {
       player.doppelDrawCount++;
-      const dmg = player.doppelDrawCount >= 7 ? 5 : 3;
+      // アイテムカード「鏡合わせの誓い」で強化閾値(通常7回)を短縮できる
+      const threshold = player.itemDoppelThreshold || 7;
+      const dmg = player.doppelDrawCount >= threshold ? 5 : 3;
       opponent.hp = Math.max(0, opponent.hp - dmg);
       return { damage: dmg }; // UIのポップアップ表示に使う
     },
-    getBaseDamage(hand, usedPower) {
-      return 2; // 勝利時のダメージは手の種類に関わらず一律2固定
+    getBaseDamage(hand, usedPower, attackerState) {
+      // 勝利時のダメージは手の種類に関わらず一律2固定(アイテムカード「虚像の刃」で底上げ可能)
+      return 2 + (attackerState.itemDoppelWinBonus || 0);
     },
     getStatus(player) {
+      const threshold = player.itemDoppelThreshold || 7;
       return [
         { label: "あいこ回数", value: `${player.doppelDrawCount}` },
-        { label: "あいこ反撃ダメージ", value: player.doppelDrawCount >= 7 ? "5" : "3" }
+        { label: "あいこ反撃ダメージ", value: player.doppelDrawCount >= threshold ? "5" : "3" }
       ];
     }
   },
@@ -573,7 +623,9 @@ export const ATTR_LOGIC = {
     },
     onPowerUse(player, opponent) {
       // グーが当たったかどうかに関わらず、パワーを消費した時点で相手に呪いを付与する
-      opponent.curseStacks = (opponent.curseStacks || 0) + 1;
+      // (アイテムカード「呪詛の増幅」で付与量(通常+1)を底上げできる)
+      const stackAmount = 1 + (player.itemCurseStackBonus || 0);
+      opponent.curseStacks = (opponent.curseStacks || 0) + stackAmount;
     },
     getStatus(player) {
       return [
@@ -591,8 +643,9 @@ export const ATTR_LOGIC = {
       return state.power; // 現在パワーを全消費
     },
     onHpChange(player) {
-      // 被ダメージ時にパワーが溜まる
-      player.power = Math.min(player.power + 5, player.maxPower);
+      // 被ダメージ時にパワーが溜まる(アイテムカード「増加装甲」で獲得量(通常+5)を底上げできる)
+      const gain = 5 + (player.itemCannonGainBonus || 0);
+      player.power = Math.min(player.power + gain, player.maxPower);
     },
     getBaseDamage(hand, usedPower, attackerState, powerCost) {
       if (hand === 0 && usedPower) return powerCost * 2; // 消費量×2ダメージ
@@ -626,8 +679,11 @@ export const ATTR_LOGIC = {
       return rollGamblerDamage(stacks, attackerState);
     },
     onPowerUse(player) {
-      if (battleRandomImpl(player) < 0.25) {
-        player.gamblerKakuhenTurns = (player.gamblerKakuhenTurns || 0) + 4;
+      // アイテムカード「イカサマの札」「大博打の記憶」で発生率(通常25%)/持続ターン(通常4)を底上げできる
+      const rate = 0.25 + (player.itemGamblerRateBonus || 0);
+      const duration = 4 + (player.itemGamblerDurationBonus || 0);
+      if (battleRandomImpl(player) < rate) {
+        player.gamblerKakuhenTurns = (player.gamblerKakuhenTurns || 0) + duration;
       }
     },
     getStatus(player) {
@@ -648,14 +704,18 @@ export const ATTR_LOGIC = {
     },
     onPowerUse(player) {
       // パワー消費のたびに3つの効果からランダムに1つ発動
-      const roll = Math.floor(battleRandomImpl(player) * 3);
+      // アイテムカード「幸運のコイン」を持つ場合はHP回復を抽選から除外し、攻撃力/防御力の2択にする
+      const excludeHeal = player.itemMagicianExcludeHeal;
+      const roll = Math.floor(battleRandomImpl(player) * (excludeHeal ? 2 : 3));
       if (roll === 0) {
         player.magicianAtkBonus++; // 永続攻撃力+1（上限なし）
       } else if (roll === 1) {
         player.magicianDefBonus = Math.min(player.magicianDefBonus + 1, 3); // 永続防御力+1（上限3）
       } else {
-        const healAmount = Math.min(4, player.maxHp - player.hp); // HP4回復
-        player.hp = Math.min(player.hp + 4, player.maxHp);
+        // アイテムカード「奇術師の手袋」で回復量(通常4)を底上げできる
+        const healBase = 4 + (player.itemMagicianHealBonus || 0);
+        const healAmount = Math.min(healBase, player.maxHp - player.hp);
+        player.hp = Math.min(player.hp + healBase, player.maxHp);
         return { heal: healAmount }; // UIのポップアップ表示に使う
       }
     },
@@ -673,12 +733,14 @@ export const ATTR_LOGIC = {
       // 追加の状態は持たない（hp/powerは既存フィールドを流用）
     },
     onTurnEnd(player) {
-      const dealt = Math.min(5, player.hp);
-      player.hp = Math.max(0, player.hp - 5); // 毎ターン自傷
+      // アイテムカード「狂戦士の心得」で毎ターン自傷(通常5)を軽減できる(最低1)
+      const selfDmg = Math.max(1, 5 - (player.itemBerserkerSelfDmgReduction || 0));
+      const dealt = Math.min(selfDmg, player.hp);
+      player.hp = Math.max(0, player.hp - selfDmg); // 毎ターン自傷
       return dealt; // UIのポップアップ表示に使う
     },
-    getBaseDamage(hand, usedPower) {
-      let dmg = 6; // どの手でも固定6ダメージ
+    getBaseDamage(hand, usedPower, attackerState) {
+      let dmg = 6 + (attackerState.itemBerserkerDmgBonus || 0); // どの手でも固定ダメージ(アイテムカード「怒濤の一撃」で底上げ可能)
       if (hand === 0 && usedPower) dmg += 3; // パワー消費したグーはさらに+3
       return dmg;
     },

@@ -60,7 +60,7 @@ import {
   setBattleCallbacks
 } from "./js/battle.js";
 
-import { STAGE_CATALOG, ITEM_CARD_CATALOG } from "./js/story-catalog.js";
+import { STAGE_CATALOG, ITEM_CARD_CATALOG, pickRandomCardIds } from "./js/story-catalog.js";
 
 import { SKIN_CATALOG, ICON_BG_CATALOG, ICON_CATALOG } from "./js/shop-catalog.js";
 
@@ -1178,22 +1178,32 @@ document.getElementById("btn-result-to-mode").addEventListener("click", () => {
 });
 
 // ===== ストーリーモード：画面ロジック =====
+// ステージは前のステージをクリアしないと挑戦できない(順番に解放していく方式)。
+// 最初のステージ(配列の先頭)だけは常に解放済み扱い。
+function isStageLocked(stageIndex, stageIds) {
+  if (stageIndex === 0) return false;
+  return !isStageCleared(stageIds[stageIndex - 1]);
+}
+
 function renderStageList() {
-  document.getElementById("stage-list").innerHTML = Object.keys(STAGE_CATALOG).map(id => {
+  const stageIds = Object.keys(STAGE_CATALOG);
+  document.getElementById("stage-list").innerHTML = stageIds.map((id, index) => {
     const stage = STAGE_CATALOG[id];
     const cleared = isStageCleared(id);
+    const locked = isStageLocked(index, stageIds);
     return `
-      <div class="stage-card clickable stage-option ${cleared ? "cleared" : ""}" data-stage="${id}">
+      <div class="stage-card ${locked ? "locked" : "clickable stage-option"} ${cleared ? "cleared" : ""}" data-stage="${id}">
         <div class="stage-card-info">
           <div class="stage-card-name">
             ${stage.name}
             ${cleared ? `<span class="stage-cleared-badge">クリア済み</span>` : ""}
+            ${locked ? `<span class="stage-locked-badge">🔒 未解放</span>` : ""}
           </div>
-          <div class="stage-card-desc">${stage.intro}</div>
-          <div class="stage-card-reward">クリア報酬：${stage.reward}コイン</div>
+          <div class="stage-card-desc">${locked ? `「${STAGE_CATALOG[stageIds[index - 1]].name}」をクリアすると挑戦できます。` : stage.intro}</div>
+          ${locked ? "" : `<div class="stage-card-reward">クリア報酬：${stage.reward}コイン${stage.unlocksAttribute ? `＋属性「${ATTR_DATA[stage.unlocksAttribute].name}」解放` : ""}</div>`}
         </div>
         <div class="stage-card-image">
-          <img src="${stage.background}" alt="${stage.name}">
+          <img src="${stage.background}" alt="${stage.name}" ${locked ? 'class="stage-image-locked"' : ""}>
         </div>
       </div>
     `;
@@ -1215,7 +1225,7 @@ function renderStageConfirm() {
   document.getElementById("stageConfirmIntro").innerText = stage.intro;
   document.getElementById("stageConfirmEnemies").innerText =
     "登場する敵の属性：" + stage.enemies.map(e => ATTR_DATA[e.attribute].name).join("・");
-  document.getElementById("stageConfirmReward").innerText = `クリア報酬：${stage.reward}コイン`;
+  document.getElementById("stageConfirmReward").innerText = `クリア報酬：${stage.reward}コイン${stage.unlocksAttribute ? `＋属性「${ATTR_DATA[stage.unlocksAttribute].name}」解放` : ""}`;
 }
 
 document.getElementById("btn-stage-select-back").addEventListener("click", () => {
@@ -1290,6 +1300,11 @@ function showStoryReadScreen(story, onContinue) {
     titleCard.classList.remove("show");
     dialogueBox.classList.add("show");
 
+    // 行ごとの背景差し替え（会話の途中でシーンが切り替わる演出用。指定が無い行は直前の背景を維持する）
+    if (line.background) {
+      document.getElementById("vn-bg").style.backgroundImage = `url("${line.background}")`;
+    }
+
     if (line.speaker) {
       namePlate.textContent = line.speaker.replace(/\{name\}/g, saveData.profileName);
       namePlate.style.display = "";
@@ -1315,10 +1330,19 @@ function showStoryReadScreen(story, onContinue) {
     renderLine();
   }
 
-  function cleanup() {
-    screenEl.removeEventListener("click", onClick);
+  function onSkipClick(e) {
+    e.stopPropagation();
+    cleanup();
+    onContinue();
   }
 
+  function cleanup() {
+    screenEl.removeEventListener("click", onClick);
+    skipBtn.removeEventListener("click", onSkipClick);
+  }
+
+  const skipBtn = document.getElementById("vn-skip-btn");
+  skipBtn.addEventListener("click", onSkipClick);
   screenEl.addEventListener("click", onClick);
 
   if (showingTitle) {
@@ -1346,6 +1370,21 @@ function startStoryEnemy() {
   onlineMyRoundRng = null;
   onlineOpponentRoundRng = null;
 
+  // プレイヤーは(CPU側と違って)敵が変わってもinitAttribute()を呼び直していないため、
+  // 炎のfireAtkBonus/fireRageのようにターン経過で無制限に積み上がるステータスがあると、
+  // 連戦が長引くほど炎だけがどんどん有利になってしまう。属性ごとにonNewBattle()を
+  // 定義しておけば、次の敵に切り替わるたびにここでリセットできる(炎以外は今のところ未定義)。
+  if (ATTR_LOGIC[playerAttribute].onNewBattle) {
+    ATTR_LOGIC[playerAttribute].onNewBattle(playerState);
+  }
+
+  // 次の敵に切り替わる際、体力が減ったまま連戦が続くと詰みやすくなるため、
+  // 減っている分の半分だけ回復する（全回復にはしない）。
+  const missingHp = playerState.maxHp - playerState.hp;
+  if (missingHp > 0) {
+    playerState.hp = Math.min(playerState.maxHp, playerState.hp + Math.ceil(missingHp / 2));
+  }
+
   const stage = STAGE_CATALOG[battleContext.stageId];
   const enemy = stage.enemies[battleContext.enemyIndex];
 
@@ -1366,6 +1405,7 @@ function startStoryEnemy() {
   document.getElementById("cpu-attr-icon").src = ATTR_DATA[cpuAttribute].img;
   document.getElementById("player-attr-icon").src = ATTR_DATA[playerAttribute].img;
   applyAttributeHudColors(playerAttribute, cpuAttribute);
+  updateItemCardTab();
 
   updateBattleUI();
   setupPlayerStatusWindow();
@@ -1394,6 +1434,10 @@ function startStoryEnemy() {
 // enemyIndexが複数回進んでしまい配列範囲外になるバグがあった。ロックで二重発火を防ぐ。
 let itemCardChoiceLocked = false;
 
+// trueの間はitem-card-list選択後にenemyIndexを進めない(1戦目開始前の選択のため、
+// まだどの敵も倒していない)。btn-to-stageでtrueにし、選択完了時にfalseへ戻す。
+let awaitingInitialItemCard = false;
+
 function renderItemCardChoice() {
   itemCardChoiceLocked = false;
 
@@ -1402,7 +1446,12 @@ function renderItemCardChoice() {
     return !card.attribute || card.attribute === playerAttribute;
   });
 
-  document.getElementById("item-card-list").innerHTML = pool.map(id => {
+  // 「商人の目利き」適用中は選択肢を1枚増やす(1回のみ、使ったら必ずfalseへ戻す)
+  const choiceCount = playerState.itemExtraCardChoicePending ? 4 : 3;
+  playerState.itemExtraCardChoicePending = false;
+  const offeredIds = pickRandomCardIds(pool, choiceCount);
+
+  document.getElementById("item-card-list").innerHTML = offeredIds.map(id => {
     const card = ITEM_CARD_CATALOG[id];
     return `
       <div class="skin-card clickable item-card-option" data-card="${id}">
@@ -1412,6 +1461,41 @@ function renderItemCardChoice() {
     `;
   }).join("");
 }
+
+// ストーリーモードのバトル中、HUDの「カード」タブに現在の取得数を反映する。
+// CPU戦/オンライン対戦にはアイテムカードが存在しないため、その場合はタブごと隠す。
+function updateItemCardTab() {
+  const tab = document.getElementById("btn-item-card-tab");
+  if (!tab) return;
+  if (battleContext.mode !== "story") {
+    tab.style.display = "none";
+    return;
+  }
+  tab.style.display = "";
+  document.getElementById("itemCardTabCount").textContent = battleContext.itemCardsTaken.length;
+}
+
+document.getElementById("btn-item-card-tab").addEventListener("click", () => {
+  const body = document.getElementById("itemCardListModalBody");
+  if (battleContext.itemCardsTaken.length === 0) {
+    body.innerHTML = `<p class="item-card-list-empty">まだアイテムカードを取得していません。</p>`;
+  } else {
+    body.innerHTML = battleContext.itemCardsTaken.map(id => {
+      const card = ITEM_CARD_CATALOG[id];
+      return `
+        <div class="skin-card">
+          <div class="skin-name">${card.name}</div>
+          <div class="skin-status">${card.desc}</div>
+        </div>
+      `;
+    }).join("");
+  }
+  document.getElementById("itemCardListModal").classList.add("show");
+});
+
+document.getElementById("itemCardListModalClose").addEventListener("click", () => {
+  document.getElementById("itemCardListModal").classList.remove("show");
+});
 
 document.getElementById("item-card-list").addEventListener("click", (e) => {
   const el = e.target.closest(".item-card-option");
@@ -1423,7 +1507,22 @@ document.getElementById("item-card-list").addEventListener("click", (e) => {
   ITEM_CARD_CATALOG[cardId].apply(playerState);
   battleContext.itemCardsTaken.push(cardId);
   incrementStat("itemCardsCollected");
-  battleContext.enemyIndex++;
+  updateItemCardTab();
+
+  if (awaitingInitialItemCard) {
+    awaitingInitialItemCard = false;
+    stopBGM(bgmMode);
+    // 最初の敵に読み物(story)があれば、enterStoryEnemy()側でstory用BGMに切り替える。
+    // 無ければここで戦闘BGMを開始する。
+    const firstEnemy = STAGE_CATALOG[battleContext.stageId].enemies[0];
+    if (!firstEnemy.story) {
+      bgmcpuBattle.volume = currentBgmVolume;
+      bgmcpuBattle.currentTime = 0;
+      bgmcpuBattle.play();
+    }
+  } else {
+    battleContext.enemyIndex++;
+  }
 
   enterStoryEnemy();
 });
@@ -2120,17 +2219,11 @@ document.getElementById("btn-to-stage").addEventListener("click", () => {
   };
   initAttribute(playerState, playerAttribute);
 
-  stopBGM(bgmMode);
-  // 最初の敵に読み物(story)があれば、enterStoryEnemy()側でstory用BGMに切り替える。
-  // 無ければここで戦闘BGMを開始する。
-  const firstEnemy = STAGE_CATALOG[battleContext.stageId].enemies[0];
-  if (!firstEnemy.story) {
-    bgmcpuBattle.volume = currentBgmVolume;
-    bgmcpuBattle.currentTime = 0;
-    bgmcpuBattle.play();
-  }
-
-  enterStoryEnemy();
+  // 1戦目が始まる前にもアイテムカードを1枚選ばせる(以降の「敵撃破後」の選択と同じ画面を流用)。
+  // BGMの切り替え(bgmMode停止→bgm選択)はitem-card-listの選択完了時にまとめて行う。
+  awaitingInitialItemCard = true;
+  renderItemCardChoice();
+  showScreen("screen-item-card-select");
 });
 
 
@@ -2249,6 +2342,7 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
    document.getElementById("cpu-attr-icon").src =
     ATTR_DATA[cpuAttribute].img;
     applyAttributeHudColors(playerAttribute, cpuAttribute);
+    updateItemCardTab(); // CPU戦/オンラインにはカードが無いため、ここでタブを隠す
 
     // ⑤ 戦闘画面が表示された瞬間に黒帯を開く
     setTimeout(() => {

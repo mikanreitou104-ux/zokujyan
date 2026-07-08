@@ -1023,6 +1023,25 @@ body {
   white-space: nowrap;
 }
 
+.stage-card.locked {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+
+.stage-locked-badge {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  white-space: nowrap;
+}
+
+.stage-image-locked {
+  filter: grayscale(1) brightness(0.5);
+}
+
 .stage-card-desc {
   font-size: 14px;
   line-height: 1.5;
@@ -1345,6 +1364,25 @@ body {
   background-color: #1a1a1a;
 }
 
+.vn-skip-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  padding: 8px 18px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 20px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vn-skip-btn:hover {
+  background: rgba(0,0,0,0.75);
+}
+
 .vn-portraits {
   position: absolute;
   bottom: 260px;
@@ -1419,13 +1457,13 @@ body {
   background: rgba(20,20,20,0.9);
   border-radius: 10px 10px 0 0;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 22px;
   color: #6ec6ff;
 }
 
 .vn-dialogue-text {
   white-space: pre-line;
-  font-size: 20px;
+  font-size: 28px;
   line-height: 1.7;
   margin-top: 6px;
 }
@@ -2384,6 +2422,52 @@ body {
 .player-hud {
   left: 24px;
   bottom: 24px;
+}
+
+/* ストーリーモードで取得したアイテムカードを確認するタブ。.player-hud(position:absolute)を
+   基準に、HPバー等を含むパネル本体の上端からさらに上に張り出す形で表示する */
+.hud-card-tab {
+  position: absolute;
+  top: -42px;
+  left: 0;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.65);
+  border: none;
+  border-radius: 10px 10px 0 0;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+  z-index: var(--z-hud-panel);
+}
+
+.hud-card-tab:hover {
+  background: rgba(0, 0, 0, 0.85);
+  transform: translateY(-3px);
+}
+
+.item-card-list-box {
+  max-width: 520px;
+}
+
+.item-card-list-body {
+  max-height: 420px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  text-align: left;
+}
+
+.item-card-list-body .skin-card {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.item-card-list-empty {
+  opacity: 0.75;
+  text-align: center;
+  padding: 12px 0;
 }
 
 /* 敵画像のすぐ右横に寄せる（画面端ではなく敵の近くに表示） */

@@ -398,6 +398,7 @@
 <section id="screen-story-read" class="screen">
   <div class="vn-bg" id="vn-bg"></div>
   <div class="vn-portraits" id="vn-portraits"></div>
+  <button id="vn-skip-btn" class="vn-skip-btn">スキップ ▶▶</button>
   <div class="vn-title-card" id="vn-title-card"></div>
   <div class="vn-dialogue-box" id="vn-dialogue-box">
     <div class="vn-name-plate" id="vn-name-plate"></div>
@@ -522,6 +523,12 @@
 
   <!-- 左下：プレイヤー HUD（属性アイコン＋HP/パワー＋属性固有ステータス） -->
   <div class="hud-panel player-hud">
+    <!-- ストーリーモードでそのランで取得したアイテムカードを確認するタブ。
+         CPU戦/オンライン対戦ではアイテムカードが存在しないため、updateItemCardTab()(main.js)が
+         battleContext.mode==="story"の時だけ表示する -->
+    <button id="btn-item-card-tab" class="hud-card-tab" style="display:none;">
+      🎴 カード <span id="itemCardTabCount">0</span>
+    </button>
     <div id="playerDamageNumberLayer"></div>
     <div class="hud-top">
       <div class="player-attr-box">
@@ -614,6 +621,17 @@
      <div class="confirm-buttons">
        <button id="nameEditModalSave" class="primary-btn">保存</button>
        <button id="nameEditModalCancel" class="secondary-btn">キャンセル</button>
+     </div>
+   </div>
+ </div>
+
+ <!-- 取得済みアイテムカード一覧モーダル（ストーリーモードの戦闘中、HUDの「カード」タブから開く） -->
+ <div id="itemCardListModal" class="confirm-modal">
+   <div class="confirm-box item-card-list-box">
+     <div class="confirm-message">取得したアイテムカード</div>
+     <div id="itemCardListModalBody" class="skin-list item-card-list-body"></div>
+     <div class="confirm-buttons">
+       <button id="itemCardListModalClose" class="secondary-btn">閉じる</button>
      </div>
    </div>
  </div>

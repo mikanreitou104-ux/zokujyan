@@ -178,4 +178,108 @@ test("ギャンブラー: tickGamblerKakuhenは0未満にならない", () => {
   assert.equal(state.gamblerKakuhenTurns, 0);
 });
 
+// ▼ ここから属性専用アイテムカード(js/story-catalog.jsの新設27種)がattributes.js側に
+// 追加した「上書き可能フィールド」の回帰テスト。カード自体のapply()はstory-catalog.test.jsで
+// 検証済みなので、ここではitemXxxフィールドを直接セットした状態でロジック関数の挙動を確認する。
+
+test("予備電池: thunderChargeMaxを上げるとチャージ上限とダメージボーナス閾値が連動する", () => {
+  const state = freshState("thunder", { thunderCharge: 5, thunderChargeMax: 7 });
+  ATTR_LOGIC.thunder.onPowerUse(state); // 6まで増える(上限7未満なのでクランプされない)
+  assert.equal(state.thunderCharge, 6);
+
+  // 通常なら5で+10ボーナスだが、上限が7の間は5は「3以上7未満」のレンジなので+1のみ
+  assert.equal(attributeBonus(freshState("thunder", { thunderCharge: 5, thunderChargeMax: 7 }), 0, "thunder"), 1);
+  // 上限(7)に達した時だけ+10
+  assert.equal(attributeBonus(freshState("thunder", { thunderCharge: 7, thunderChargeMax: 7 }), 0, "thunder"), 10);
+});
+
+test("拳聖の証/乱打の心得: 格闘家のpowerCostとチョキダメージを底上げできる", () => {
+  const state = freshState("fighter", { itemFighterPowerCostReduction: 1 });
+  assert.equal(getPowerCost("fighter", state), 0); // 通常1 - 1 = 0
+
+  const maxedOut = freshState("fighter", { itemFighterPowerCostReduction: 5 });
+  assert.equal(getPowerCost("fighter", maxedOut), 0); // 最低0でクランプ
+
+  assert.equal(ATTR_LOGIC.fighter.getBaseDamage(2, false, { itemFighterScissorsBonus: 2 }), 7); // 5+2
+});
+
+test("湧き水の加護/氷解の記憶: 水のonDraw回復量・パワー獲得量を底上げできる", () => {
+  const state = freshState("water", { hp: 10, maxHp: 25, power: 0, maxPower: 5, itemWaterHealBonus: 2, itemWaterPowerBonus: 1 });
+  const result = ATTR_LOGIC.water.onDraw(state);
+  assert.equal(result.heal, 5); // 3+2
+  assert.equal(state.hp, 15);
+  assert.equal(state.power, 2); // 1+1
+});
+
+test("暴風の残滓: 風速3のボーナスを底上げできる", () => {
+  const state = freshState("wind", { windSpeed: 3, itemWindMaxSpeedBonusExtra: 2 });
+  assert.equal(attributeBonus(state, 0, "wind"), 6); // 通常4+2
+});
+
+test("深紅の渇き/牙の刻印: 吸血の回復率とグー固定ダメージを底上げできる", () => {
+  const attacker = freshState("vampire", { hp: 10, maxHp: 25, itemVampireHealRateBonus: 0.15 });
+  const healed = ATTR_LOGIC.vampire.onWin(attacker, 0, true, 10); // 65%
+  assert.equal(healed, 6); // floor(10*0.65)=6
+
+  assert.equal(ATTR_LOGIC.vampire.getBaseDamage(0, true, { itemVampireRockBonus: 2 }), 7); // 5+2
+});
+
+test("鏡合わせの誓い/虚像の刃: ドッペルゲンガーの閾値短縮と勝利ダメージ底上げ", () => {
+  const state = freshState("doppel", { itemDoppelThreshold: 4 });
+  const opponent = { hp: 25 };
+  ATTR_LOGIC.doppel.onDraw(state, opponent);
+  ATTR_LOGIC.doppel.onDraw(state, opponent);
+  ATTR_LOGIC.doppel.onDraw(state, opponent);
+  const result = ATTR_LOGIC.doppel.onDraw(state, opponent); // 4回目、閾値4に到達
+  assert.equal(result.damage, 5);
+
+  assert.equal(ATTR_LOGIC.doppel.getBaseDamage(0, false, { itemDoppelWinBonus: 2 }), 4); // 2+2
+});
+
+test("呪詛の増幅: 呪術のパワー消費時の呪い付与量を底上げできる", () => {
+  const player = freshState("curse", { itemCurseStackBonus: 1 });
+  const opponent = freshState("thunder");
+  ATTR_LOGIC.curse.onPowerUse(player, opponent);
+  assert.equal(opponent.curseStacks, 2); // 通常1+1
+});
+
+test("増加装甲: 砲台の被弾時パワー獲得を底上げできる", () => {
+  const state = freshState("cannon", { power: 0, maxPower: 20, itemCannonGainBonus: 2 });
+  ATTR_LOGIC.cannon.onHpChange(state);
+  assert.equal(state.power, 7); // 通常5+2
+});
+
+test("イカサマの札/大博打の記憶: ギャンブラーの確変率・持続ターンを底上げできる", () => {
+  setBattleRandom(() => 0.3); // 通常25%では外れるが、+10%で35%なら発動する固定乱数
+  try {
+    const state = freshState("gambler", { gamblerKakuhenTurns: 0, itemGamblerRateBonus: 0.1, itemGamblerDurationBonus: 2 });
+    ATTR_LOGIC.gambler.onPowerUse(state);
+    assert.equal(state.gamblerKakuhenTurns, 6); // 通常4+2
+  } finally {
+    setBattleRandom(Math.random);
+  }
+});
+
+test("幸運のコイン: マジシャンの抽選からHP回復を除外できる", () => {
+  setBattleRandom(() => 0.9); // 3択なら回復(roll=2)を引く乱数だが、2択に絞ると防御力(roll=1)になる
+  try {
+    const state = freshState("magician", { hp: 10, maxHp: 25, itemMagicianExcludeHeal: true });
+    const result = ATTR_LOGIC.magician.onPowerUse(state);
+    assert.equal(result, undefined); // 回復が発生していない
+    assert.equal(state.hp, 10);
+    assert.equal(state.magicianDefBonus, 1);
+  } finally {
+    setBattleRandom(Math.random);
+  }
+});
+
+test("狂戦士の心得/怒濤の一撃: バーサーカーの自傷軽減と固定ダメージ底上げ", () => {
+  const state = freshState("berserker", { hp: 10, itemBerserkerSelfDmgReduction: 1 });
+  const dealt = ATTR_LOGIC.berserker.onTurnEnd(state);
+  assert.equal(dealt, 4); // 通常5-1
+  assert.equal(state.hp, 6);
+
+  assert.equal(ATTR_LOGIC.berserker.getBaseDamage(1, false, { itemBerserkerDmgBonus: 2 }), 8); // 6+2
+});
+
 summarize("tests/attributes.test.js");
