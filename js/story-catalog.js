@@ -45,7 +45,7 @@ export const STAGE_CATALOG = {
         }
       },
       { name: "水スライム",   img: "./images/enemy/mizusra.png", attribute: "water",   maxHp: 18, maxPower: 2, aiType: "defensive" },
-      { name: "おっきめスライム", img: "./images/enemy/akasra.png",  attribute: "thunder", maxHp: 24, maxPower: 2, aiType: "balanced" }
+      { name: "雷スライム", img: "./images/enemy/kaminarisra.png",  attribute: "thunder", maxHp: 24, maxPower: 2, aiType: "balanced" }
     ],
     // clearStory: 任意。ステージの最後の敵を倒した直後、リザルト画面より前に挟む読み物。
     clearStory: {
@@ -165,6 +165,9 @@ export const STAGE_CATALOG = {
       { name: "蜂", img: "./images/enemy/mizusra.png", attribute: "poison",  maxHp: 26, maxPower: 3, aiType: "aggressive" },
       { name: "格闘スライム", img: "./images/enemy/mizusra.png", attribute: "fighter", maxHp: 28, maxPower: 3, aiType: "aggressive" },
       { name: "ゴブリン", img: "./images/enemy/mizusra.png", attribute: "berserker", maxHp: 80, maxPower: 3, aiType: "balanced",
+        // このstory.lines内で村が襲われている場面に切り替わる(該当行にbackground指定あり)ため、
+        // 戦闘そのものもその続きとして村の光景(images/stage/3.png)で行う
+        background: "./images/stage/3.png",
         story: {
           lines: [
             { speaker: "女の声", text: "きゃああああああああああああああああああああああああ" },
@@ -184,6 +187,7 @@ export const STAGE_CATALOG = {
         }
       },
       { name: "ゴブリン", img: "./images/enemy/mizusra.png", attribute: "berserker",   maxHp: 80, maxPower: 3, aiType: "balanced",
+        background: "./images/stage/3.png",
         story: {
           background: "./images/stage/3.png",
           lines: [
@@ -194,6 +198,7 @@ export const STAGE_CATALOG = {
         }
       },
       { name: "ホブゴブリン",   img: "./images/enemy/mizusra.png", attribute: "berserker", maxHp: 100, maxPower: 4, aiType: "aggressive",
+        background: "./images/stage/3.png",
         story: {
           background: "./images/stage/3.png",
           lines: [

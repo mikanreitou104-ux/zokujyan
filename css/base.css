@@ -1,0 +1,226 @@
+/* ===== デザイントークン =====
+   色・z-indexを直書きせずここに集約する。値を1箇所変えるだけで全画面に反映されるようにするための土台。
+   既存の見た目を壊さないよう、z-indexは元の数値のまま名前だけ付けている。 */
+:root {
+  --accent-gold: #ffd24d;
+  --power-color: #ffd24d;
+  --btn-primary-a: #ff4d4d;
+  --btn-primary-b: #b30000;
+  --btn-secondary-bg: rgba(255, 255, 255, 0.2);
+  --hp-color-default: #ff4444;
+  --heal-color: #4caf50;
+  --damage-color: #ff4444;
+
+  /* モードタイルの配色ルール：--tile-hueだけ変えれば新モードも同じ見た目の系統に乗る */
+  --tile-sat: 88%;
+  --tile-light-a: 62%;
+  --tile-light-b: 36%;
+
+  /* バトル画面のレイヤー順(z-index)。手札カード(5) < HUD(15) < メニュー(16-17) <
+     選択中カード/手アイコン(20) < 暗幕(50) < じゃんけん演出(55) < 結果テキスト(60) <
+     大技カットイン(65) < 開始演出(66) < 確認モーダル(80) < 常時最前面の戻るボタン(99999) */
+  --z-hand-cards: 5;
+  --z-hud-panel: 15;
+  --z-battle-menu: 16;
+  --z-battle-menu-panel: 17;
+  --z-hand-active: 20;
+  --z-dark-overlay: 50;
+  --z-janken-scene: 55;
+  --z-result: 60;
+  --z-attack-cutin: 65;
+  --z-battle-start-splash: 66;
+  --z-confirm-modal: 80;
+  --z-fixed-back-button: 99999;
+  --z-rotate-overlay: 1000000;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #000; /* #game-canvasの外側（レターボックス）の色 */
+  overflow: hidden;  /* スクロールバーを出さない */
+}
+
+body {
+  color: #fff;
+  font-family: "Noto Sans JP", sans-serif;
+  text-align: center;
+}
+
+/* 固定デザイン解像度(1920x1080)のゲーム本体。
+   実ウィンドウのサイズに関わらず常に同じ比率で見えるよう、
+   main.js(updateGameScale)がtransform: scale(...)で拡縮する。
+   transformを持つため、内部のposition:fixed/absolute要素の基準(containing block)にもなる */
+#game-canvas {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 1920px;
+  height: 1080px;
+  background: #fff; /* 個別に背景を指定していない画面の下地（従来のbody背景と同じ白） */
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* 画面共通 */
+.screen {
+  display: none;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.screen.active {
+  display: block;
+}
+
+/* 縦向きのスマホ／狭い画面ではゲーム全体を覆って回転を促す。
+   OSレベルの回転ロックはブラウザ対応がまちまち（特にiOS Safariは非対応）なため、
+   確実に効くCSSでの案内表示を主手段とする。 */
+.rotate-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-rotate-overlay);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #000;
+  color: #fff;
+  text-align: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.rotate-overlay-icon {
+  font-size: 48px;
+  animation: rotateHint 1.6s ease-in-out infinite;
+}
+
+.rotate-overlay-text {
+  font-size: clamp(16px, 4vw, 20px);
+  font-weight: 700;
+  margin: 0;
+}
+
+@keyframes rotateHint {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
+}
+
+@media (orientation: portrait) and (max-width: 900px) {
+  .rotate-overlay {
+    display: flex;
+  }
+}
+/* 黒帯（カーテン）。#game-canvasがtransformを持つのでabsoluteの基準はそちらになる */
+.curtain {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: #000;
+  z-index: 5;
+  transition: transform 0.6s ease;
+}
+
+.title-blak {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: #000;
+  z-index: 6;
+  transition: transform 0.6s ease;
+}
+
+.title-blak-top{
+  top: 0;
+  transform: translateY(-80%);
+}
+
+.title-blak-bottom {
+  bottom: 0;
+  transform: translateY(80%);
+}
+
+/* 上の黒帯は上に隠れる */
+.curtain-top {
+  top: 0;
+  transform: translateY(-100%);
+}
+
+/* 下の黒帯は下に隠れる */
+.curtain-bottom {
+  bottom: 0;
+  transform: translateY(100%);
+}
+
+/* 閉じるアニメ（中央に寄る） */
+.curtain.close {
+  transform: translateY(0);
+}
+
+/* 開くアニメ（外側に戻る） */
+.curtain.open-top {
+  transform: translateY(-100%);
+}
+.curtain.open-bottom {
+  transform: translateY(100%);
+}
+
+.mode-curtain {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: #000;
+  z-index: 5;
+  transition: transform 0.6s ease;
+}
+#screen-mode .mode-curtain-top,
+#screen-mode .mode-curtain-bottom {
+  visibility: hidden;      /* ← 画面切り替え前は見えない */
+  transform: translateY(0); /* ← 閉じた状態で待機 */
+}
+/* タイトル内容 */
+.title-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  z-index: 2;
+  margin-top: 54px;
+}
+
+/* タイトル画像（1920x1080基準の固定サイズ） */
+.title-img {
+  width: 1040px;
+}
+
+.start-text {
+  font-size: 38px;
+  color: #000;
+  opacity: 0.9;
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+
+/* モード選択タイトル */
+/* タイトル */
+.mode-title {
+  text-align: center;
+  margin-top: 40px;
+  font-size: 32px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(0,0,0,0.7);
+}
+

@@ -1,0 +1,277 @@
+/* ===== プレイヤー / CPU HUDパネル（属性アイコン＋HP/パワー＋属性固有ステータスを1箇所に集約） ===== */
+.hud-panel {
+  position: absolute;
+  z-index: var(--z-hud-panel);
+  width: 400px;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 14px;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 12px rgba(0,0,0,0.4);
+  box-sizing: border-box;
+  color: #fff;
+}
+
+.player-hud {
+  left: 24px;
+  bottom: 24px;
+}
+
+/* ストーリーモードで取得したアイテムカードを確認するタブ。.player-hud(position:absolute)を
+   基準に、HPバー等を含むパネル本体の上端からさらに上に張り出す形で表示する */
+.hud-card-tab {
+  position: absolute;
+  top: -42px;
+  left: 0;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.65);
+  border: none;
+  border-radius: 10px 10px 0 0;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+  z-index: var(--z-hud-panel);
+}
+
+.hud-card-tab:hover {
+  background: rgba(0, 0, 0, 0.85);
+  transform: translateY(-3px);
+}
+
+.item-card-list-box {
+  max-width: 520px;
+}
+
+.item-card-list-body {
+  max-height: 420px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  text-align: left;
+}
+
+.item-card-list-body .skin-card {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.item-card-list-empty {
+  opacity: 0.75;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* 敵画像のすぐ右横に寄せる（画面端ではなく敵の近くに表示） */
+.cpu-hud {
+  right: 100px;
+  top: 110px;
+}
+
+.hud-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hud-bars {
+  flex: 1;
+  min-width: 0;
+}
+
+.hp-text {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* --attr-color/--hp-color-defaultはmain.jsのapplyAttributeVisuals()が
+   .player-hud/.cpu-hud(親要素)に設定し、こことHPバー(.bar div)の両方に反映される */
+.player-attr-box,
+.cpu-attr-box {
+  width: 78px;
+  height: 78px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.45); /* 半透明の黒 */
+  border-radius: 12px;             /* 角丸 */
+  backdrop-filter: blur(4px);      /* ぼかしで高級感 */
+  box-shadow: 0 0 8px rgba(0,0,0,0.4), 0 0 14px var(--attr-color, transparent); /* 影＋属性色の光彩 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-window {
+  margin-top: 8px;
+  padding: 14px;
+  background: rgba(0, 58, 49, 0.45);
+  border-radius: 12px;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 10px rgba(0, 181, 109, 0.4);
+  color: #ffffff;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.status-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.status-list li {
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+/* 属性固有ステータスの1行（ラベルと値を横並びで両端に配置） */
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.status-row:last-child {
+  margin-bottom: 0;
+}
+
+/* 結果テキスト */
+.result-text {
+  position: absolute;
+  top: 497px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  color: white;
+  text-shadow: 0 0 6px black;
+  white-space: nowrap;
+}
+
+.win-layer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 64px;
+  color: #fff;
+  text-shadow: 0 0 20px #000;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+
+/* リザルト画面 */
+#resultScreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: var(--z-result); /* darkOverlayやじゃんけん演出より前面 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.result-box {
+  background: rgba(20, 20, 20, 0.9);
+  padding: 40px 60px;
+  border-radius: 16px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.result-message {
+  font-size: 36px;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 30px;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.7);
+}
+
+.result-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.result-buttons button {
+  width: 100%;
+}
+
+/* 汎用確認モーダル（window.confirm()の代わりにゲーム内デザインで確認を挟む） */
+.confirm-modal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: var(--z-confirm-modal); /* メニューパネルやresultScreenより前面 */
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-modal.show {
+  display: flex;
+}
+
+.confirm-box {
+  background: rgba(20, 20, 20, 0.9);
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  max-width: 420px;
+}
+
+.confirm-message {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.name-edit-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  margin-bottom: 24px;
+  font-size: 18px;
+  text-align: center;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.name-edit-input:focus {
+  outline: none;
+  border-color: #ffcc00;
+}
+
+.confirm-buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+}
+
+.confirm-buttons button {
+  min-width: 120px;
+}
+
+/*　バトル画面のcssここまで　*/

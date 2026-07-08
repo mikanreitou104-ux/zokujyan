@@ -1,0 +1,587 @@
+/* ===== オンライン対戦：ルーム作成/参加ロビー ===== */
+.online-lobby-panel {
+  max-width: 560px;
+  text-align: left;
+}
+
+.online-lobby-block {
+  padding: 10px 0;
+}
+
+.online-lobby-block h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.online-lobby-desc {
+  margin: 0 0 14px;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.online-lobby-divider {
+  height: 1px;
+  margin: 20px 0;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.online-join-input {
+  max-width: 240px;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+}
+
+.online-join-error {
+  margin: 12px 0 0;
+  min-height: 1.4em;
+  color: #ff6b6b;
+  font-size: 14px;
+}
+
+/* ===== オンライン対戦：待機画面(相手参加待ち・属性選択待ち・再戦待ち共用) =====
+   showScreen()は対象の.screenへstyle.display="block"を直接セットするため(project-roadmapの既知の罠)、
+   画面本体をflexにはせず、内側の.online-waiting-boxを絶対配置で中央寄せする */
+.online-waiting-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 40px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 16px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.online-waiting-code-block {
+  margin-bottom: 28px;
+}
+
+.online-waiting-code {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 10px;
+  color: #ffcc00;
+  margin-top: 8px;
+}
+
+.online-waiting-message {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.online-waiting-spinner {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 28px;
+  border: 5px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffcc00;
+  border-radius: 50%;
+  animation: onlineWaitingSpin 1s linear infinite;
+}
+
+@keyframes onlineWaitingSpin {
+  to { transform: rotate(360deg); }
+}
+
+.mode-main {
+  display: flex;
+  flex: 0 1 auto;
+  gap: 32px;
+  align-items: stretch;
+}
+
+/* 左：キャラクターパネル（プレースホルダー） */
+.mode-character-panel {
+  position: relative;
+  flex: 0 0 38%;
+  max-width: 560px;
+  min-height: 420px;
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255,255,255,0.12), rgba(0,0,0,0.35) 70%),
+    linear-gradient(180deg, #2a1a45, #120a24);
+  box-shadow: 0 0 20px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 32px;
+  box-sizing: border-box;
+}
+
+.mode-character-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 70%, rgba(255,210,77,0.25), transparent 60%);
+  pointer-events: none;
+}
+
+.mode-character-art {
+  position: relative;
+  width: 70%;
+  max-width: 320px;
+  filter: drop-shadow(0 10px 25px rgba(0,0,0,0.5));
+}
+
+/* 右：モードタイルグリッド。新モードは<button>を1つ追加するだけで自然に折り返す */
+.mode-grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-auto-rows: minmax(90px, auto);
+  gap: 20px;
+  align-content: start;
+}
+
+.mode-btn.tile-wide {
+  grid-column: 1 / -1;
+  min-height: 110px;
+  font-size: 26px;
+}
+
+.mode-btn.tile {
+  min-height: 72px;
+  font-size: 19px;
+}
+
+/* ▼ ボタン共通デザイン。padding方式からグリッドセルが高さを決める方式に置き換え */
+.mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 16px;
+  font-weight: 700;
+  border-radius: 14px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  transition: 0.25s ease;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  z-index: 2; /* ← 背景より前に固定 */
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* オンラインは準備中：見た目だけ控えめに（クリック/ホバー自体は現状どおり生きたまま） */
+.mode-btn.disabled {
+  opacity: 0.55;
+  filter: grayscale(0.35);
+}
+.mode-btn.disabled:hover {
+  transform: none;
+  filter: grayscale(0.35);
+}
+
+
+/* ストーリー → 専用ボタン画像（テキストは画像に描き込み済みのため文字は非表示）
+   画像全体が見切れないよう、画像の縦横比に合わせて高さを可変にする */
+.mode-btn.story {
+  background: url("../images/ui/story-btn.png") no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 1453 / 348;
+  height: auto;
+  box-shadow: none;
+  font-size: 0;
+}
+
+/* オンライン → 専用ボタン画像（テキストは画像に描き込み済みのため文字は非表示）
+   画像全体が見切れないよう、画像の縦横比に合わせて高さを可変にする */
+.mode-btn.online {
+  background: url("../images/ui/online-btn.png") no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 1400 / 304;
+  height: auto;
+  box-shadow: none;
+  font-size: 0;
+}
+
+/* モードタイルの配色は全て同じ式(145deg, --tile-sat, --tile-light-a→b)に乗せ、
+   --tile-hueだけを変えることで「ルールのある色分け」にする */
+.mode-btn.shop,
+.mode-btn.quest,
+.mode-btn.cpu,
+.mode-btn.mymenu {
+  background: linear-gradient(145deg,
+    hsl(var(--tile-hue) var(--tile-sat) var(--tile-light-a)),
+    hsl(var(--tile-hue) var(--tile-sat) var(--tile-light-b)));
+}
+
+/* ショップ → 緑系 */
+.mode-btn.shop {
+  --tile-hue: 150;
+}
+
+/* クエスト → 紫系 */
+.mode-btn.quest {
+  position: relative; /* バッジ(.quest-badge)を右上に絶対配置するため */
+  --tile-hue: 268;
+}
+
+/* 獲得可能なクエスト件数バッジ */
+.quest-badge {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 13px;
+  background: #ff3333;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+}
+
+/* CPU → オレンジ系 */
+.mode-btn.cpu {
+  --tile-hue: 24;
+}
+
+/* MYメニュー → ピンク系 */
+.mode-btn.mymenu {
+  --tile-hue: 322;
+}
+
+/* ホバーで光る */
+.mode-btn:hover {
+  transform: translateY(-4px);
+  filter: brightness(1.15);
+}
+
+/* 固定解像度化に伴い、実ウィンドウ幅に反応するレスポンシブ切り替えは廃止
+   （#game-canvas全体が一様に拡縮されるため、内部要素ごとに個別のブレークポイントは不要） */
+
+#mode-description {
+  position: absolute;
+  bottom: -100px;        /* ← 初期状態は画面外に隠す */
+  left: 0;
+  width: 100%;
+  height: 50px;
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 20px;
+  font-size: 22px;
+  box-shadow: 0 -4px 10px rgba(0,0,0,0.5);
+  transition: bottom 0.3s ease;
+  pointer-events: none;
+  text-align: center;
+   z-index: 3;   
+}
+
+
+#screen-mode .bg-effect {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.4s ease, background 0.4s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+#screen-mode.bg-story .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(255, 0, 0, 0.4), rgba(255, 0, 0, 0.4)),
+    url("../images/ui/story-bg.png");
+}
+
+/* オンライン背景（青） */
+#screen-mode.bg-online .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(0, 80, 255, 0.4), rgba(0, 80, 255, 0.4)),
+    url("../images/ui/online-bg.png");
+}
+
+/* ショップ背景（緑） */
+#screen-mode.bg-shop .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(0, 255, 120, 0.4), rgba(0, 255, 120, 0.4)),
+    url("../images/ui/shop-bg.png");
+}
+
+/* クエスト背景（紫） */
+#screen-mode.bg-quest .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(150, 0, 255, 0.4), rgba(150, 0, 255, 0.4)),
+    url("../images/ui/quest-bg.png");
+}
+
+/* CPU背景（オレンジ） */
+#screen-mode.bg-cpu .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(255, 120, 0, 0.4), rgba(255, 120, 0, 0.4)),
+    url("../images/ui/cpu-bg.png");
+}
+
+/* MYメニュー背景（ピンク） */
+#screen-mode.bg-mymenu .bg-effect {
+  opacity: 1;
+  background:
+    linear-gradient(rgba(255, 0, 150, 0.4), rgba(255, 0, 150, 0.4)),
+    url("../images/ui/mymenu-bg.png");
+}
+
+
+.settings-tab {
+  padding: 20px;
+  background: rgba(0,0,0,0.6);
+  border-radius: 12px;
+  color: #fff;
+  width: 90%;
+  margin: 0 auto;
+  margin-top: 20px;
+}
+
+
+/* MYメニュー・ショップ共通のタブ切り替え見た目（.settings-tabは他画面とも共有しているクラスなので、
+   表示/非表示の制御は専用の.mymenu-tab-panel/.shop-tab-panelだけに掛ける。
+   MYメニューとショップは別々のクラスにして、片方のタブ切り替えがもう片方のactive状態に
+   影響しないようにしている） */
+.mymenu-tab-nav,
+.shop-tab-nav {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px auto 0;
+  width: 90%;
+}
+
+.mymenu-tab-btn,
+.shop-tab-btn {
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.mymenu-tab-btn:hover,
+.shop-tab-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.mymenu-tab-btn.active,
+.shop-tab-btn.active {
+  background: var(--accent-gold, #ffd24d);
+  color: #222;
+}
+
+.mymenu-tab-panel,
+.shop-tab-panel {
+  display: none;
+}
+
+.mymenu-tab-panel.active,
+.shop-tab-panel.active {
+  display: block;
+}
+
+/* ショップはスキン/アイコンの種類が今後増えていく想定なので、タブの中身だけスクロールできるようにする
+   (.screenがoverflow:hiddenなので、中身側で高さを区切ってoverflow-y:autoにする必要がある。
+   .icon-list-col/.quest-listと同じパターン) */
+.shop-tab-panel.active {
+  max-height: 700px;
+  overflow-y: auto;
+}
+
+.volume-control {
+  margin: 20px 0;
+}
+
+.volume-control label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 20px;
+}
+
+#bgm-volume,
+#se-volume {
+  width: 100%;
+}
+
+/* 設定：じゃんけんカードの出し方（クリック／ドラッグ＆ドロップ）切り替え */
+.hand-input-mode-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hand-input-mode-btn {
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.hand-input-mode-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.hand-input-mode-btn.active {
+  background: var(--accent-gold, #ffd24d);
+  color: #222;
+}
+
+/* MYメニュー・ショップ・クエストを前面に出して中身を見えるようにする */
+#screen-mymenu,
+#screen-shop,
+#screen-quest,
+#screen-stage-select,
+#screen-stage-confirm,
+#screen-item-card-select,
+#screen-story-result {
+  position: relative;
+  z-index: 10;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding-top: 40px;
+  box-sizing: border-box;
+}
+
+.story-attr-unlock {
+  color: #ffd54a;
+  font-weight: 900;
+  font-size: 20px;
+  text-shadow: 0 0 12px rgba(255, 213, 74, 0.7);
+}
+
+.coins-display {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 10px;
+}
+
+.skin-list {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.skin-card {
+  width: 140px;
+  padding: 16px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 14px;
+  text-align: center;
+  box-shadow: 0 0 15px rgba(0,0,0,0.4);
+}
+
+.skin-card img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
+
+/* アイコン背景（色・グラデーション）のプレビュー用スウォッチ */
+.iconbg-swatch {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  margin: 0 auto 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+}
+
+/* MYメニュー：アイコンタブ全体のレイアウト（左＝プレビュー、右＝選択リスト） */
+.icon-tab-layout {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+/* 左：装備中のアイコン画像＋アイコン背景の組み合わせプレビュー。
+   .screen祖先にoverflow:hiddenが掛かっておりposition:stickyが効かないため、
+   代わりに右側の.icon-list-colだけを内部スクロールさせることでプレビューを不動にする */
+.icon-preview-col {
+  flex: 0 0 auto;
+}
+
+.icon-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.5);
+}
+
+.icon-preview-img {
+  width: 90%;
+  height: 90%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* 右：アイコン画像・背景の選択リスト。この中だけスクロールする */
+.icon-list-col {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.settings-tab h3 {
+  margin-top: 24px;
+  margin-bottom: 6px;
+}
+
+.settings-tab h3:first-child {
+  margin-top: 0;
+}
+
+.skin-card .skin-name {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.skin-card .skin-status {
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.skin-card.equipped {
+  outline: 2px solid var(--accent-gold, #ffd24d);
+}
+
+.skin-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, filter 0.2s;
+}
+
+.skin-card.clickable:hover {
+  transform: translateY(-4px);
+  filter: brightness(1.15);
+}
+

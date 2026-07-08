@@ -2,7 +2,6 @@ import {
   ATTR_BASE_STATUS,
   ATTR_DATA,
   ATTR_LOGIC,
-  setBattleRandom,
   getRandomAttribute,
   initAttribute,
   getPowerCost,
@@ -62,6 +61,44 @@ import {
 
 import { STAGE_CATALOG, ITEM_CARD_CATALOG, pickRandomCardIds } from "./js/story-catalog.js";
 
+import {
+  updateModeProfileDisplay,
+  renderProfileScreen,
+  recordOnlineRoundResult,
+  setProfileCallbacks
+} from "./js/profile.js";
+
+import {
+  resetOnlineRng,
+  seedOnlineRng,
+  showOnlineWaiting,
+  connectOnlineSocket,
+  resolveOnlineOpponentHand,
+  leaveOnlineRoom,
+  sendSurrender,
+  sendPlayHand,
+  setOnlineCallbacks
+} from "./js/online.js";
+
+import {
+  currentBgmVolume,
+  seClick,
+  seCardFly,
+  seDamage,
+  winSE,
+  seBigImpact,
+  bgmMode,
+  bgmcpuBattle,
+  bgmStory,
+  seSlider,
+  battleBgmSlider,
+  battleSeSlider,
+  playCoinSE,
+  playPurchaseSE,
+  playCardHoverSE,
+  stopBGM
+} from "./js/audio.js";
+
 import { SKIN_CATALOG, ICON_BG_CATALOG, ICON_CATALOG } from "./js/shop-catalog.js";
 
 // ===== 固定デザイン解像度(1920x1080) → 実ウィンドウへのレターボックス拡縮 =====
@@ -108,7 +145,22 @@ setBattleCallbacks({
   setupPlayerStatusWindow,
   setupCpuStatusWindow,
   endJankenScene,
-  onRoundResult: recordOnlineRoundResult
+  // recordOnlineRoundResult(profile.js)はbattleContextを持たないため、呼び出し側でmodeを渡す
+  onRoundResult: (result) => recordOnlineRoundResult(battleContext.mode, result)
+});
+
+setProfileCallbacks({ showScreen, showNameEditModal });
+
+setOnlineCallbacks({
+  showScreen,
+  showConfirmModal,
+  exitBattleToScreen,
+  beginVersusBattle,
+  handleCpuDefeated,
+  renderAttrCards,
+  getPlayerState: () => playerState,
+  getCpuState: () => cpuState,
+  getBattleContext: () => battleContext
 });
 
 // ===== ショップ / MYメニュー：カード裏スキン =====
@@ -369,298 +421,9 @@ document.getElementById("mymenu-icon-list").addEventListener("click", (e) => {
 });
 // ===== アイコン画像ここまで =====
 
-// ===== プロフィール =====
-// モード選択画面左上のアイコン＋名前チップと、それをクリックして開くプロフィール画面(#screen-profile)を管理する
+// プロフィール関連はjs/profile.jsに切り出し済み(冒頭のimportとsetProfileCallbacks()呼び出しを参照)
 
-// じゃんけんの勝率(手を問わない通算)。roundWinCount/roundLossCount/drawCountはbattleTurn()で更新される
-function getRoundWinRatePercent() {
-  const wins = getStatByPath("roundWinCount");
-  const losses = getStatByPath("roundLossCount");
-  const draws = getStatByPath("drawCount");
-  const total = wins + losses + draws;
-  return total > 0 ? Math.round((wins / total) * 100) : 0;
-}
-
-// battle.js(setBattleCallbacks)から毎ターン呼ばれる。roundWinCount等はCPU/ストーリーも合算されるため、
-// オンライン対戦のみの勝率を分けて見たい場合はこちらのonline専用カウンタを使う
-function recordOnlineRoundResult(result) {
-  if (battleContext.mode !== "online") return;
-  if (result === "win") incrementStat("onlineRoundWinCount");
-  else if (result === "loss") incrementStat("onlineRoundLossCount");
-  else incrementStat("onlineDrawCount");
-}
-
-// オンライン対戦のみのじゃんけん勝率
-function getOnlineRoundWinRatePercent() {
-  const wins = getStatByPath("onlineRoundWinCount");
-  const losses = getStatByPath("onlineRoundLossCount");
-  const draws = getStatByPath("onlineDrawCount");
-  const total = wins + losses + draws;
-  return total > 0 ? Math.round((wins / total) * 100) : 0;
-}
-
-// 指定した手(rock/paper/scissors)を出した時の勝率
-function getHandWinRatePercent(handKey) {
-  const wins = getStatByPath(`handWinCount.${handKey}`);
-  const plays = getStatByPath(`handUseCount.${handKey}`);
-  return plays > 0 ? Math.round((wins / plays) * 100) : 0;
-}
-
-// モード選択画面左上のチップ(アイコン・名前)を更新する。アイコン装備変更・名前変更のたびに呼ぶ
-function updateModeProfileDisplay() {
-  const nameEl = document.getElementById("modeProfileName");
-  if (nameEl) nameEl.textContent = saveData.profileName || "ユーザー";
-
-  const icon = ICON_CATALOG[saveData.equippedIcon] || ICON_CATALOG.akasra;
-  const iconBg = ICON_BG_CATALOG[saveData.equippedIconBg] || ICON_BG_CATALOG.red;
-  const iconWrap = document.getElementById("modeProfileIconWrap");
-  const iconImg = document.getElementById("modeProfileIconImg");
-  if (iconWrap) iconWrap.style.background = iconBg.css;
-  if (iconImg) iconImg.src = icon.img;
-}
-
-// プロフィール画面本体の中身を描画する
-function renderProfileScreen() {
-  updateModeProfileDisplay();
-
-  const icon = ICON_CATALOG[saveData.equippedIcon] || ICON_CATALOG.akasra;
-  const iconBg = ICON_BG_CATALOG[saveData.equippedIconBg] || ICON_BG_CATALOG.red;
-  document.getElementById("profileNameDisplay").textContent = saveData.profileName || "ユーザー";
-  document.getElementById("profileIconWrap").style.background = iconBg.css;
-  document.getElementById("profileIconImg").src = icon.img;
-
-  const totalStages = Object.keys(STAGE_CATALOG).length;
-  document.getElementById("profileStoryClear").textContent =
-    `${saveData.clearedStages.length} / ${totalStages} ステージクリア`;
-
-  const handMeta = [["rock", "グー"], ["paper", "パー"], ["scissors", "チョキ"]];
-  document.getElementById("profileHandStats").innerHTML = handMeta.map(([key, label]) => `
-    <div class="profile-stat-row">
-      <span>${label}</span>
-      <span>${getStatByPath(`handUseCount.${key}`)}回(勝率${getHandWinRatePercent(key)}%)</span>
-    </div>
-  `).join("");
-  document.getElementById("profileOverallWinRate").textContent = `${getRoundWinRatePercent()}%`;
-
-  const onlineWins = getStatByPath("onlineRoundWinCount");
-  const onlineLosses = getStatByPath("onlineRoundLossCount");
-  const onlineDraws = getStatByPath("onlineDrawCount");
-  const onlineTotal = onlineWins + onlineLosses + onlineDraws;
-  document.getElementById("profileOnlineWinRate").textContent = onlineTotal > 0
-    ? `${onlineWins}勝${onlineLosses}敗${onlineDraws}分(勝率${getOnlineRoundWinRatePercent()}%)`
-    : "まだ対戦していません";
-
-  const claimedQuestCount = Object.keys(QUEST_CATALOG).filter(id => {
-    const record = saveData.quests.mainProgress[id];
-    return record && record.claimed;
-  }).length;
-  document.getElementById("profileQuestClear").textContent =
-    `${claimedQuestCount} / ${Object.keys(QUEST_CATALOG).length}`;
-
-  const totalAttrs = Object.keys(ATTR_BASE_STATUS).length;
-  const unlockedAttrs = Math.min(totalAttrs, 3 + saveData.unlockedAttributes.length); // 基本3属性は常時解放
-  document.getElementById("profileAttrCount").textContent = `${unlockedAttrs} / ${totalAttrs}`;
-}
-
-const modeProfileChip = document.getElementById("modeProfileChip");
-if (modeProfileChip) {
-  modeProfileChip.addEventListener("click", () => {
-    renderProfileScreen();
-    showScreen("screen-profile");
-  });
-}
-
-const btnProfileBack = document.getElementById("btn-profile-back");
-if (btnProfileBack) {
-  btnProfileBack.addEventListener("click", () => {
-    showScreen("screen-mode");
-  });
-}
-
-const btnProfileEditName = document.getElementById("btn-profile-edit-name");
-if (btnProfileEditName) {
-  btnProfileEditName.addEventListener("click", () => {
-    showNameEditModal("名前を入力してください(12文字まで)", saveData.profileName || "ユーザー", (newName) => {
-      saveData.profileName = newName.slice(0, 12);
-      saveSaveData();
-      renderProfileScreen();
-    });
-  });
-}
-// ===== プロフィールここまで =====
-
-// ===== オンライン対戦(友達対戦・ルームコード方式) =====
-// サーバーは「2人の入力を中継するだけ」の薄い層(server/index.js)。ダメージ計算・属性ロジックは
-// 一切サーバーに複製せず、両クライアントが同じ入力(お互いの属性・手)を使って既存の戦闘エンジン
-// (battleTurn等)をそのまま実行する。battleContext.mode="online"に統一し、CPU戦の内部処理
-// (battleContext.mode!=="story"ならendBattle()へ、等)をそのまま流用する。
-//
-// デプロイ後、Renderで発行される実際のURLに書き換えること(例: "https://zokujan-online-server.onrender.com")。
-function getOnlineServerUrl() {
-  return "https://zokujan-online-server.onrender.com";
-}
-
-let onlineSocket = null;
-let onlineOpponentHandBuffer = null;   // roundResultが先に届いた場合に一時保持する
-let onlineOpponentHandCallback = null; // startJankenScene側が先に待ち構えている場合のコールバック
-
-// シード付き疑似乱数生成器(mulberry32)。同じseedを与えれば両クライアントで同一の乱数列を再現できる
-function mulberry32(seed) {
-  return function () {
-    seed |= 0;
-    seed = (seed + 0x6D2B79F5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// オンライン対戦中、そのラウンドだけ有効な「自分側」「相手側」の乱数生成器。
-// ギャンブラーのダイス目・確変抽選、マジシャンの効果抽選などは通常Math.random()を使うが、
-// オンライン対戦では両クライアントが同じ入力を独立に計算するため、素のMath.random()だと
-// 双方で異なる結果になってしまう(実際に「ダメージが食い違う」バグとして発生した)。
-// サーバーがラウンドごとに配布するシードを使い、battleRandom()経由で決定論的な値に差し替える。
-let onlineMyRoundRng = null;
-let onlineOpponentRoundRng = null;
-
-// 属性ロジック内でMath.random()の代わりに呼ぶ。actingStateは実際に行動している側のstate
-// (playerState/cpuStateのどちらか)。オンライン対戦中でなければ通常のMath.random()にフォールバックする。
-// actingState===playerStateかどうかで判定するのは、オンライン対戦ではplayer/cpuの役割が
-// クライアントごとに入れ替わる(自分が必ずplayerState)ため、実行順に関係なく
-// 「同じ人の行動」には常に同じシード由来の乱数を割り当てられるようにするため
-function battleRandom(actingState) {
-  if (!onlineMyRoundRng) return Math.random();
-  return actingState === playerState ? onlineMyRoundRng() : onlineOpponentRoundRng();
-}
-setBattleRandom(battleRandom);
-
-function showOnlineWaiting(message, roomCode) {
-  document.getElementById("onlineWaitingMessage").textContent = message;
-  const codeBlock = document.getElementById("onlineWaitingCodeBlock");
-  if (roomCode) {
-    document.getElementById("onlineWaitingCode").textContent = roomCode;
-    codeBlock.style.display = "block";
-  } else {
-    codeBlock.style.display = "none";
-  }
-  showScreen("screen-online-waiting");
-}
-
-// ルーム参加(roomReady)が成立した瞬間に呼ぶ。既存のCPU戦用の属性選択UIをそのまま流用する
-function enterOnlineAttributeSelect() {
-  battleContext.mode = "online";
-  document.getElementById("cpu-attr-select-title").textContent = "オンライン対戦の属性を選択";
-  renderAttrCards("cpu-attr-select-list");
-  showScreen("screen-cpu-attr-select");
-  // CPU戦の属性選択画面と共用しているため、CPU戦の入口と同じ背景クラスをここでも付ける
-  // (btn-mode-cpuのクリックハンドラでのみ付与していたため、オンライン経由だと真っ白になっていた)
-  document.getElementById("screen-cpu-attr-select").classList.add("bg-cpu-attr");
-}
-
-// サーバーへの接続は初回のみ行い、以降は使い回す
-function connectOnlineSocket() {
-  if (onlineSocket) return onlineSocket;
-
-  onlineSocket = io(getOnlineServerUrl());
-
-  onlineSocket.on("connect_error", () => {
-    document.getElementById("online-join-error").textContent =
-      "サーバーに接続できませんでした。時間をおいて再度お試しください。";
-  });
-
-  onlineSocket.on("roomCreated", ({ code }) => {
-    showOnlineWaiting("この5桁のコードを友達に伝えて、参加してもらいましょう。", code);
-  });
-
-  onlineSocket.on("joinError", (message) => {
-    document.getElementById("online-join-error").textContent = message;
-  });
-
-  onlineSocket.on("roomReady", () => {
-    enterOnlineAttributeSelect();
-  });
-
-  onlineSocket.on("battleStart", ({ opponentAttribute }) => {
-    beginVersusBattle("online", opponentAttribute, "./images/enemy/mizusra.png");
-  });
-
-  onlineSocket.on("roundResult", ({ opponentHand, yourSeed, opponentSeed }) => {
-    const payload = { opponentHand, yourSeed, opponentSeed };
-    if (onlineOpponentHandCallback) {
-      const cb = onlineOpponentHandCallback;
-      onlineOpponentHandCallback = null;
-      cb(payload);
-    } else {
-      onlineOpponentHandBuffer = payload;
-    }
-  });
-
-  onlineSocket.on("rematchReady", () => {
-    enterOnlineAttributeSelect();
-  });
-
-  onlineSocket.on("opponentLeft", () => {
-    showConfirmModal("相手が退出しました。モード選択へ戻ります。", () => {
-      // showScreen()だけだとBGMの切り替えや結果画面・演出のリセットが行われず、
-      // 戦闘BGMが鳴りっぱなしになるバグがあったため、通常の離脱処理と同じexitBattleToScreen()に統一する
-      exitBattleToScreen("screen-mode");
-    });
-  });
-
-  // 相手が降参した場合、こちらは勝利扱いにする(BGM切り替え・状態リセットは
-  // 通常の決着時と同じhandleCpuDefeated()→endBattle()の流れにそのまま乗せる)
-  onlineSocket.on("opponentSurrendered", () => {
-    cpuState.hp = 0;
-    handleCpuDefeated();
-  });
-
-  return onlineSocket;
-}
-
-// battleTurn()に渡す相手の手を取得する。すでにroundResultが届いていれば即座に、
-// まだなら届いた瞬間にcallbackを呼ぶ(ネットワーク遅延を吸収するため)
-function resolveOnlineOpponentHand(callback) {
-  if (onlineOpponentHandBuffer !== null) {
-    const payload = onlineOpponentHandBuffer;
-    onlineOpponentHandBuffer = null;
-    callback(payload);
-  } else {
-    onlineOpponentHandCallback = callback;
-  }
-}
-
-// ルームを離れる際の後片付け(モード選択に戻る/相手の退出を検知した際などに呼ぶ)
-function leaveOnlineRoom() {
-  if (onlineSocket) onlineSocket.emit("leaveRoom");
-  onlineOpponentHandBuffer = null;
-  onlineOpponentHandCallback = null;
-}
-
-document.getElementById("btn-mode-online").addEventListener("click", () => {
-  document.getElementById("online-join-error").textContent = "";
-  showScreen("screen-online-lobby");
-});
-
-document.getElementById("btn-online-lobby-back").addEventListener("click", () => {
-  showScreen("screen-mode");
-});
-
-document.getElementById("btn-online-create-room").addEventListener("click", () => {
-  connectOnlineSocket().emit("createRoom");
-});
-
-document.getElementById("btn-online-join-room").addEventListener("click", () => {
-  const code = document.getElementById("online-join-code-input").value.trim().toUpperCase();
-  document.getElementById("online-join-error").textContent = "";
-  if (!code) return;
-  connectOnlineSocket().emit("joinRoom", code);
-});
-
-document.getElementById("btn-online-waiting-cancel").addEventListener("click", () => {
-  leaveOnlineRoom();
-  showScreen("screen-mode");
-});
-// ===== オンライン対戦ここまで =====
+// オンライン対戦関連はjs/online.jsに切り出し済み(冒頭のimportとsetOnlineCallbacks()呼び出しを参照)
 
 // モード選択画面の「クエスト」ボタン右上に、獲得可能なクエスト件数のバッジを出す
 function updateQuestClaimableBadge() {
@@ -1367,8 +1130,7 @@ function startStoryEnemy() {
   trackAttributePlay(playerAttribute);
   // 前回オンライン対戦のシード付き乱数が残っていると、ストーリーモードでもbattleRandom()が
   // 誤ってそれを使ってしまうため、通常のMath.random()に戻す
-  onlineMyRoundRng = null;
-  onlineOpponentRoundRng = null;
+  resetOnlineRng();
 
   // プレイヤーは(CPU側と違って)敵が変わってもinitAttribute()を呼び直していないため、
   // 炎のfireAtkBonus/fireRageのようにターン経過で無制限に積み上がるステータスがあると、
@@ -1399,7 +1161,8 @@ function startStoryEnemy() {
 
   resetBattleCounters();
 
-  setBattleBackground(stage.background);
+  // 敵ごとに戦闘背景を差し替えたい場合はenemy.backgroundを指定する(未指定ならステージ共通の背景)
+  setBattleBackground(enemy.background || stage.background);
   setEnemyImage(enemy.img);
   document.getElementById("enemy-img").classList.remove("enemyFadeOut");
   document.getElementById("cpu-attr-icon").src = ATTR_DATA[cpuAttribute].img;
@@ -1744,135 +1507,6 @@ modeButtons.forEach(btn => {
 
 
 
-let currentBgmVolume = 0.6;  // 初期値は好きに設定
-
-const seClick = document.getElementById("se-click");
-const seStart = document.getElementById("se-cancel");
-const seCardFly = document.getElementById("se-card-fly");
-const seDamage = document.getElementById("se-damage");
-    const winSE = document.getElementById("se-gekiha");
-const seBigImpact = document.getElementById("se-big-impact");
-const seCoin = document.getElementById("se-coin");
-const sePurchase = document.getElementById("se-purchase");
-
-// クエスト報酬受け取り時のSE(連打・まとめて受け取り時も鳴らせるよう毎回currentTimeを巻き戻す)
-function playCoinSE() {
-  seCoin.currentTime = 0;
-  seCoin.play();
-}
-
-// ショップで購入が成立した時のSE
-function playPurchaseSE() {
-  sePurchase.currentTime = 0;
-  sePurchase.play();
-}
-
-
-function playClick() {
-  seClick.currentTime = 0; // 連打でも鳴るように
-  seClick.play();
-}
-
-document.querySelectorAll(".mode-btn").forEach(btn => {
-  btn.addEventListener("click", playClick);
-});
-document.querySelectorAll(".primary-btn").forEach(btn => {
-  btn.addEventListener("click", playClick);
-});
-document.querySelectorAll(".secondary-btn").forEach(btn => {
-  btn.addEventListener("click", playClick);
-});
-
-document.querySelectorAll("#btn-attr-back").forEach(btn => {
-  btn.addEventListener("click", playClick);
-});
-const seHover = document.getElementById("se-hover");
-
-
-function playHover() {
-  seHover.currentTime = 0;
-  seHover.play();
-}
-document.querySelectorAll(".mode-btn").forEach(btn => {
-  btn.addEventListener("mouseenter", playHover);
-});
-
-document.querySelectorAll(".primary-btn").forEach(btn => {
-  btn.addEventListener("mouseenter", playHover);
-});
-
-document.querySelectorAll(".secondary-btn").forEach(btn => {
-  btn.addEventListener("mouseenter", playHover);
-});
-
-const seHoverCard = document.getElementById("se-HoverCard");
-
-function playCardHoverSE() {
-  seHoverCard.currentTime = 0;
-  seHoverCard.play();
-}
-
-
-// ▼ 音源の取得
-const bgmMode = document.getElementById("bgm-mode");
-const bgmcpuBattle = document.getElementById("bgm-cpu-battle");
-const bgmStory = document.getElementById("bgm-story"); // ストーリーの読み物シーン(screen-story-read)専用BGM
-
-// ▼ 音量スライダー取得
-const bgmSlider = document.getElementById("bgm-volume");
-const seSlider = document.getElementById("se-volume");
-
-// ▼ 起動時に保存された音量を読み込む
-const savedBgm = localStorage.getItem("bgmVolume");
-const savedSe  = localStorage.getItem("seVolume");
-
-// BGM
-if (savedBgm !== null) {
-  const vol = Number(savedBgm);
-  bgmSlider.value = vol;
-  currentBgmVolume = vol;   // ← これが最重要
-  bgmMode.volume = vol;
-  bgmcpuBattle.volume = vol;
-  bgmStory.volume = vol;
-}
-
-// SE
-if (savedSe !== null) {
-  const vol = Number(savedSe);
-  seSlider.value = vol;
-  seStart.volume = vol;
-  seClick.volume = vol;
-  seHover.volume = vol;
-  seHoverCard.volume = vol;
-  seCardFly.volume = vol;
-  seDamage.volume = vol;
-  winSE.volume = vol;
-  seCoin.volume = vol;
-  sePurchase.volume = vol;
-}
-
-
-// ▼ モード画面BGMを流す
-function playModeBGM() {
-  bgmMode.volume = 0.6;
-  bgmMode.play();
-}
-
-// ▼ BGMを止める（フェードアウト付き）
-function stopBGM(bgm) {
-  let vol = bgm.volume;
-  const fade = setInterval(() => {
-    vol -= 0.05;
-    if (vol <= 0) {
-      bgm.pause();
-      bgm.currentTime = 0;
-      clearInterval(fade);
-    } else {
-      bgm.volume = vol;
-    }
-  }, 50);
-}
-
 document.addEventListener("DOMContentLoaded", () => {
 
   const screenMode = document.getElementById("screen-mode");
@@ -1933,43 +1567,6 @@ document.getElementById("screen-title").addEventListener("click", () => {
   }, 650); // ← ここを変えれば遅延時間を調整できる
 });
 
-
-// 音量調整はMYメニュー設定タブ・戦闘画面メニューの両方から呼べるよう、変更処理を共通化する
-// （両方のスライダーの見た目もここで一緒に同期する）
-function setBgmVolume(vol) {
-  currentBgmVolume = vol;
-  localStorage.setItem("bgmVolume", vol);
-  bgmMode.volume = vol;
-  bgmcpuBattle.volume = vol;
-  bgmStory.volume = vol;
-  bgmSlider.value = vol;
-  if (battleBgmSlider) battleBgmSlider.value = vol;
-}
-
-function setSeVolume(vol) {
-  localStorage.setItem("seVolume", vol);
-  seStart.volume = vol;
-  seClick.volume = vol;
-  seHover.volume = vol;
-  seHoverCard.volume = vol;
-  seCardFly.volume = vol;
-  seDamage.volume = vol;
-  winSE.volume = vol;
-  seCoin.volume = vol;
-  sePurchase.volume = vol;
-  seSlider.value = vol;
-  if (battleSeSlider) battleSeSlider.value = vol;
-}
-
-// ▼ BGM音量変更
-bgmSlider.addEventListener("input", () => {
-  setBgmVolume(Number(bgmSlider.value));
-});
-
-// ▼ SE音量変更
-seSlider.addEventListener("input", () => {
-  setSeVolume(Number(seSlider.value));
-});
 
 // ===== 汎用確認モーダル（window.confirm()の代わりにゲーム内デザインで確認を挟む） =====
 const confirmModal = document.getElementById("confirmModal");
@@ -2039,10 +1636,10 @@ function showNameEditModal(message, currentValue, onSave) {
 }
 
 // ===== 戦闘画面：左上メニュー（音量調整・リスタート・降参） =====
+// battleBgmSlider/battleSeSliderはjs/audio.jsで宣言・配線済み(スライダー自体の
+// input配線はaudio.js側の責務)。ここではパネルを開いた瞬間の値同期のためだけに使う。
 const battleMenuBtn = document.getElementById("battle-menu-btn");
 const battleMenuPanel = document.getElementById("battleMenuPanel");
-const battleBgmSlider = document.getElementById("battle-bgm-volume");
-const battleSeSlider = document.getElementById("battle-se-volume");
 
 function closeBattleMenu() {
   battleMenuPanel.classList.remove("show");
@@ -2065,18 +1662,6 @@ if (battleMenuBtn && battleMenuPanel) {
   });
 }
 
-if (battleBgmSlider) {
-  battleBgmSlider.addEventListener("input", () => {
-    setBgmVolume(Number(battleBgmSlider.value));
-  });
-}
-
-if (battleSeSlider) {
-  battleSeSlider.addEventListener("input", () => {
-    setSeVolume(Number(battleSeSlider.value));
-  });
-}
-
 document.getElementById("battle-menu-restart").addEventListener("click", () => {
   closeBattleMenu();
   showConfirmModal("戦闘をリスタートしますか？", () => {
@@ -2087,9 +1672,7 @@ document.getElementById("battle-menu-restart").addEventListener("click", () => {
 document.getElementById("battle-menu-surrender").addEventListener("click", () => {
   closeBattleMenu();
   showConfirmModal("降参しますか？この戦闘は敗北扱いになります。", () => {
-    if (battleContext.mode === "online" && onlineSocket) {
-      onlineSocket.emit("surrender");
-    }
+    if (battleContext.mode === "online") sendSurrender();
     playerState.hp = 0;
     handlePlayerDefeated();
   });
@@ -2280,8 +1863,7 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
   // 前回オンライン対戦で使ったシード付き乱数が残っていると、CPU戦でもbattleRandom()が
   // それを誤って使ってしまう(オンライン対戦なら「ぽん！」のタイミングで必ず再シードされるので、
   // ここでnullに戻しておいても支障はない)
-  onlineMyRoundRng = null;
-  onlineOpponentRoundRng = null;
+  resetOnlineRng();
 
   if (!playerAttribute) {
     playerAttribute = "fire"; // デフォルト（何でもいい）
@@ -2447,9 +2029,7 @@ function commitHand(card, hand) {
 
   // オンライン対戦は、自分の手が決まった瞬間(演出開始前)に送っておくことで
   // 相手の応答を待つ時間を極力減らす
-  if (battleContext.mode === "online" && onlineSocket) {
-    onlineSocket.emit("playHand", { hand });
-  }
+  if (battleContext.mode === "online") sendPlayHand(hand);
 
   // 飛び終わったらじゃんけん画面へ切り替え
   setTimeout(() => {
@@ -2639,8 +2219,7 @@ function startJankenScene(playerHand) {
       // (相手の応答がまだ届いていなければ、届いた瞬間にこのコールバックが呼ばれる)
       resolveOnlineOpponentHand(({ opponentHand: cpuHand, yourSeed, opponentSeed }) => {
         // このラウンドの乱数を両クライアントで一致させるため、battleTurn()を呼ぶ前に必ずシードし直す
-        onlineMyRoundRng = mulberry32(yourSeed);
-        onlineOpponentRoundRng = mulberry32(opponentSeed);
+        seedOnlineRng(yourSeed, opponentSeed);
 
         playerCard.src = `./images/hands/${handImg[playerHand]}.png`;
         cpuCard.src = `./images/hands/${handImg[cpuHand]}.png`;

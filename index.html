@@ -4,12 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ゾクジャン</title>
-  <!-- main.cssがfont-family: "Noto Sans JP"を指定しているが、読み込みがなくOS標準フォントに
+  <!-- css/base.cssがfont-family: "Noto Sans JP"を指定しているが、読み込みがなくOS標準フォントに
        フォールバックしていたため、実際にWebフォントを読み込む -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="main.css" />
+  <!-- main.css(2683行)を分割済み。読み込み順はカスケードに影響するため元のファイル内の並び順のまま -->
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/mode-select.css" />
+  <link rel="stylesheet" href="css/online-profile.css" />
+  <link rel="stylesheet" href="css/menus.css" />
+  <link rel="stylesheet" href="css/story.css" />
+  <link rel="stylesheet" href="css/battle.css" />
+  <link rel="stylesheet" href="css/battle-hud.css" />
 </head>
 <body>
 

@@ -1,0 +1,660 @@
+    /* 以下はバトル画面のcss */
+
+/* バトル画面の敵エリア */
+/* 背景 */
+.battle-screen {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+}
+
+/* メニュー */
+.battle-menu {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  font-size: 38px;
+  background: rgba(0,0,0,0.4);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  z-index: var(--z-battle-menu);
+}
+
+/* メニューの中身（音量調整・リスタート・降参） */
+.battle-menu-panel {
+  position: absolute;
+  top: 76px;
+  left: 20px;
+  z-index: var(--z-battle-menu-panel);
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+  width: 260px;
+  padding: 16px;
+  background: rgba(0,0,0,0.75);
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.5);
+}
+
+.battle-menu-panel.show {
+  display: flex;
+}
+
+.battle-menu-section label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #fff;
+}
+
+.battle-menu-section input[type="range"] {
+  width: 100%;
+}
+
+.battle-menu-action {
+  width: 100%;
+}
+
+/* 敵エリア（画面中央） */
+.enemy-area {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.enemy-img {
+  width: 320px;
+  height: auto;
+  transition: transform 0.6s ease;
+  transform: scale(0.5); /* 初期は少し小さく */
+}
+
+/* ドラッグ＆ドロップでカードを敵の上まで運んだときの視覚フィードバック（scaleは.zoom-inと競合するのでfilterのみ変更） */
+.enemy-area.drag-over .enemy-img {
+  filter: drop-shadow(0 0 24px rgba(255, 220, 80, 0.9));
+}
+
+.enemy-img.zoom-in {
+  transform: scale(1); /* ズームイン後の通常サイズ */
+}
+
+/* 汎用バー（親要素の幅に追従） */
+.bar {
+  width: 100%;
+  height: 18px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+/* HPバー：属性選択時にmain.jsが.player-hud/.cpu-hudへ--hp-colorを設定し、属性ごとの色で染める。
+   未設定時は既存どおり赤系のフォールバックになる */
+.bar div {
+  height: 100%;
+  background: var(--hp-color-default, #ff4444);
+  background: linear-gradient(90deg, var(--hp-color-default, #ff4444), color-mix(in srgb, var(--hp-color-default, #ff4444) 55%, white));
+  width: 100%;
+}
+
+#playerPowerBar,
+#cpuPowerBar {
+  width: 0%;
+  height: 100%;
+  background: var(--power-color, #ffd24d);
+  transition: width 0.2s ease;
+}
+
+.attr-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 手札カード */
+.hand-cards {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  z-index: var(--z-hand-cards);
+}
+
+.handcard-img{
+  width: 80%;
+  height:auto;
+  margin: 0 auto;
+  display: block;
+  object-fit: contain;
+  /* 画像のネイティブドラッグ／長押しメニューが独自ドラッグ操作の邪魔をするので無効化する */
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  pointer-events: none; /* 常に親の.hand-cardでポインタイベントを受ける */
+}
+
+/* 配布アニメの初期状態 */
+.hand-card {
+  width: 170px;
+  height: 240px;
+  overflow: hidden;
+  border-radius: 12px;
+  position: relative;
+  background: #fff;
+  transform: translateY(80px);
+  opacity: 0;
+  transition: transform 0.4s ease, opacity 0.4s ease;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 配布後の位置 */
+.hand-card.deal {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* ドラッグ＆ドロップモード：ホバーで掴めることが分かるカーソルにする */
+.hand-cards.mode-dragdrop .hand-card {
+  cursor: grab;
+  touch-action: none; /* ドラッグ中にスマホでページ自体がスクロールしないようにする */
+}
+
+/* ドラッグ中のカード：ポインタに追従させるためtransformはJSがインラインで直接制御する。
+   トランジションを切って追従を滑らかにし、他のカードより手前に表示する。 */
+.hand-card.dragging {
+  cursor: grabbing;
+  transition: none;
+  z-index: var(--z-hand-active);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* 光る状態（選択状態） */
+.hand-card.selected {
+  transform: translateY(-10px) scale(1.1);
+  box-shadow: 0 0 20px rgba(255, 255, 0, 0.8);
+  opacity: 1;
+}
+
+/* selected のときはホバー演出を無効化 */
+.hand-card.selected:hover {
+  transform: translateY(-10px) scale(1.1);
+}
+
+
+
+/* ホバー演出は “deal が付いている時だけ” 有効にする */
+.hand-card.deal:hover {
+  transform: translateY(-20px) scale(1.05);
+  z-index: 10;
+}
+
+.hand-card.deal:not(:hover) {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.fly-away {
+  animation: flyAwayFast 1s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes flyAwayFast {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-380px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+.janken-scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none; /* ← 最初は非表示 */
+  z-index: var(--z-janken-scene); /* ← 手札カード・darkOverlayより前面に */
+}
+/* プレイヤーのカード（下から飛んでくる） */
+.janken-card.player {
+  position: absolute;
+  left: 50%;
+  bottom: -250px; /* 画面外からスタート */
+  transform: translateX(-50%);
+  transition: bottom 0.5s ease, transform 0.5s ease;
+}
+
+.janken-card.player.show {
+  bottom: 10%; /* 中央へ */
+}
+
+/* CPUカード（上から飛んでくる） */
+.janken-card.cpu {
+  position: absolute;
+  left: 50%;
+  top: -250px; /* 画面外からスタート */
+  transform: translateX(-50%);
+  transition: top 0.5s ease, transform 0.5s ease;
+}
+
+.janken-card.cpu.show {
+  top: 10%; /* 中央へ */
+}
+
+.janken-scene {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.janken-scene.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player-hand-img,
+.cpu-hand-img {
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+}
+
+/* まだ手を出していない（srcが空）間は壊れた画像アイコンを表示しない */
+.player-hand-img[src=""],
+.cpu-hand-img[src=""] {
+  display: none;
+}
+.player-hand-area {
+  position: absolute;
+  left: 75%;        /* ← やや右寄り */
+  top: 55%;         /* ← 中央より少し下 */
+  transform: translate(-50%, -50%);
+  width: 170px;
+  height: 170px;
+  z-index: var(--z-hand-active);
+  text-align: center;
+}
+
+.cpu-hand-area {
+  position: absolute;
+  left: 32%;        /* ← 敵のやや左寄り */
+  top: 51%;         /* ← 画面中央に移動した敵に合わせる */
+  transform: translate(-50%, -50%);
+  width: 170px;
+  height: 170px;
+  z-index: var(--z-hand-active);
+  text-align: center;
+}
+
+/* 手アイコンの背景（黒い手アイコンでも背景と同化しないよう不透明気味に） */
+.cpu-hand-box,
+.player-hand-box {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 16px;             /* 角丸 */
+  backdrop-filter: blur(4px);      /* ぼかしで高級感 */
+  box-shadow: 0 0 12px rgba(0,0,0,0.5); /* 影で浮かせる */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* じゃんけん演出の大きい手札（黒い手アイコン対策でカード風の白背景を敷く） */
+.janken-card {
+  width: 220px;
+  height: 290px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+#darkOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.4); /* ← 40%暗くする */
+  pointer-events: none;        /* ← クリックを邪魔しない */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: var(--z-dark-overlay); /* ← じゃんけん演出より下、戦闘画面より上 */
+}
+
+#darkOverlay.show {
+  opacity: 1;
+}
+
+/* 画面全体を赤くするフラッシュ */
+.damage-flash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 0, 0, 0.35);
+  pointer-events: none;
+  animation: flash 0.25s ease;
+}
+
+@keyframes flash {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* シェイク演出 */
+.shake {
+  animation: shake 0.4s ease;
+}
+
+@keyframes shake {
+  0% { transform: translate(0px, 0px); }
+  20% { transform: translate(-10px, 5px); }
+  40% { transform: translate(8px, -8px); }
+  60% { transform: translate(-6px, 6px); }
+  80% { transform: translate(4px, -4px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+/* 敵画像赤フラッシュ */
+.enemy-flash {
+  filter: brightness(2) saturate(2) hue-rotate(-20deg);
+  animation: enemyFlash 0.2s ease;
+}
+
+@keyframes enemyFlash {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(2) saturate(2); }
+  100% { filter: brightness(1); }
+}
+
+/* 敵画像シェイク */
+.enemy-shake {
+  animation: enemyShake 0.4s ease;
+}
+
+@keyframes enemyShake {
+  0% { transform: translate(0,0); }
+  20% { transform: translate(-8px, 4px); }
+  40% { transform: translate(6px, -6px); }
+  60% { transform: translate(-4px, 4px); }
+  80% { transform: translate(3px, -3px); }
+  100% { transform: translate(0,0); }
+}
+
+.enemyFadeOut {
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+/* ダメージ数字 */
+#cpuDamageNumberLayer {
+  position: absolute;
+  top: 20%;
+  right: 20%;
+  pointer-events: none;
+}
+
+.cpu-damage-number {
+  font-size: 48px;
+  color: var(--damage-color, #ff4444);
+  font-weight: bold;
+  animation: cpuDamagePop 0.6s ease-out forwards;
+}
+
+@keyframes cpuDamagePop {
+  0% { transform: scale(0.2); opacity: 0; }
+  30% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* プレイヤー側のダメージ・回復数字（毒・呪い・自傷など、通常攻撃以外のダメージ源も表示） */
+#playerDamageNumberLayer {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.player-damage-number {
+  font-size: 40px;
+  color: var(--damage-color, #ff4444);
+  font-weight: bold;
+  animation: cpuDamagePop 0.6s ease-out forwards;
+}
+
+/* 回復表示（吸血・マジシャンなど）は緑色の"+N"にする */
+.heal-number {
+  color: var(--heal-color, #4caf50);
+}
+
+/* じゃんけんの結果（WIN!/LOSE!/DRAW!）を画面中央に大きく出す演出 */
+.big-result-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.4);
+  font-size: 110px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  -webkit-text-stroke: 3px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  z-index: var(--z-result);
+}
+
+.big-result-text.show {
+  animation: bigResultPop 0.8s ease-out forwards;
+}
+
+.big-result-text.win { color: #ffcc00; }
+.big-result-text.lose { color: #ff4444; }
+.big-result-text.draw { color: #66ccff; }
+
+@keyframes bigResultPop {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  40% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+/* 10ダメージ以上を与えられそうな攻撃の「ぽん!」前カットイン演出 */
+.big-attack-cutin {
+  position: absolute;
+  top: 42%;
+  left: -140%;
+  width: 140%;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  overflow: hidden; /* アイコンが帯からはみ出した部分を隠す */
+  transform: skewY(-4deg);
+  background: #ff2d00; /* アイコンの背景色と統一。将来アイコンごとに色が変わる場合はここも連動させる */
+  box-shadow: 0 0 40px rgba(255, 60, 0, 0.7);
+  opacity: 0;
+  pointer-events: none;
+  z-index: var(--z-attack-cutin);
+}
+
+.big-attack-cutin.show {
+  animation: cutinSweep 0.7s ease-out forwards;
+}
+
+.big-attack-cutin .cutin-icon {
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 50%;
+  background: #ff2d00; /* カットイン帯の背景色と揃えている。将来アイコンごとに色を持たせる場合はここを差し替える */
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.5);
+  transform: skewY(4deg); /* 親のskewを打ち消して画像自体は歪ませない */
+}
+
+.big-attack-cutin .cutin-icon[src=""] {
+  display: none; /* srcが未設定の時は非表示 */
+}
+
+.big-attack-cutin .cutin-text {
+  display: block;
+  text-align: center;
+  font-size: 56px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 6px;
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes cutinSweep {
+  0% { left: -140%; opacity: 0; }
+  15% { left: -20%; opacity: 1; }
+  70% { left: -20%; opacity: 1; }
+  100% { left: 120%; opacity: 0; }
+}
+
+/* 戦闘開始演出：属性確認画面→戦闘画面の切り替え直後に一瞬「属性 VS 属性」を見せる */
+.battle-start-splash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 60px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: var(--z-battle-start-splash);
+}
+
+.battle-start-splash .battle-start-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+}
+
+.battle-start-splash .battle-start-icon {
+  width: 160px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: #222;
+  border: 4px solid #fff;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+}
+
+.battle-start-splash .battle-start-name {
+  font-size: 32px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+  letter-spacing: 2px;
+}
+
+.battle-start-splash .battle-start-vs {
+  font-size: 72px;
+  font-weight: 900;
+  font-style: italic;
+  color: #ffd400;
+  text-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 212, 0, 0.6);
+  opacity: 0;
+  transform: scale(2);
+}
+
+.battle-start-splash.show {
+  animation: battleStartFade 1s ease-out forwards;
+}
+
+.battle-start-splash.show .battle-start-player {
+  animation: battleStartSlideInLeft 1s ease-out forwards;
+}
+
+.battle-start-splash.show .battle-start-cpu {
+  animation: battleStartSlideInRight 1s ease-out forwards;
+}
+
+.battle-start-splash.show .battle-start-vs {
+  animation: battleStartVsPop 1s ease-out forwards;
+}
+
+@keyframes battleStartFade {
+  0%   { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes battleStartSlideInLeft {
+  0%   { transform: translateX(-160px); opacity: 0; }
+  25%  { transform: translateX(0); opacity: 1; }
+  85%  { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(0); opacity: 0; }
+}
+
+@keyframes battleStartSlideInRight {
+  0%   { transform: translateX(160px); opacity: 0; }
+  25%  { transform: translateX(0); opacity: 1; }
+  85%  { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(0); opacity: 0; }
+}
+
+@keyframes battleStartVsPop {
+  0%   { transform: scale(2); opacity: 0; }
+  25%  { transform: scale(1); opacity: 1; }
+  85%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* 10ダメージ以上が実際に着弾した瞬間の大きめフラッシュ・シェイク */
+.damage-flash.big-impact {
+  background: radial-gradient(circle, rgba(255, 220, 120, 0.9) 0%, rgba(255, 70, 0, 0.55) 45%, rgba(0, 0, 0, 0) 80%);
+  animation: bigImpactFlash 0.5s ease;
+}
+
+@keyframes bigImpactFlash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.big-shake {
+  animation: bigShake 0.5s ease;
+}
+
+@keyframes bigShake {
+  0% { transform: translate(0px, 0px); }
+  15% { transform: translate(-18px, 10px); }
+  30% { transform: translate(16px, -14px); }
+  45% { transform: translate(-14px, 12px); }
+  60% { transform: translate(10px, -10px); }
+  75% { transform: translate(-6px, 6px); }
+  100% { transform: translate(0px, 0px); }
+}
+
