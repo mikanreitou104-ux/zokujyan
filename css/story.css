@@ -1,6 +1,6 @@
 /* ===== 属性選択画面 ===== */
 #screen-attr-select {
-  padding: 40px;
+  padding: 54px;
   text-align: center;
   background:
     linear-gradient(180deg, rgba(112,0,0,0.55), rgba(48,0,0,0.55)),
@@ -10,7 +10,7 @@
 }
 
 .attr-title {
-  font-size: 32px;
+  font-size: 43px;
   font-weight: 900;
   margin-bottom: 30px;
 }
@@ -18,7 +18,7 @@
 .attr-list {
   display: flex;
   justify-content: center;
-  gap: 30px;
+  gap: 41px;
   flex-wrap: wrap;
 }
 
@@ -26,8 +26,8 @@
    カードのstyle属性に設定する。属性ごとの色を視覚的な差分にするための唯一の手がかりだった
    画像アイコンに加えて、枠と光彩でも属性を判別できるようにする */
 .attr-card {
-  width: 220px;
-  padding: 20px;
+  width: 297px;
+  padding: 27px;
   background: rgba(255,255,255,0.08);
   border: 2px solid var(--attr-color, rgba(255,255,255,0.15));
   border-radius: 14px;
@@ -44,44 +44,44 @@
 }
 
 .attr-card img {
-  width: 100px;
-  height: 100px;
+  width: 135px;
+  height: 135px;
   object-fit: contain;
   margin-bottom: 10px;
 }
 
 /* 属性選択画面（ストーリー）：横4個ぶんのサイズを最小幅として指定し、auto-fitで
    実際の列数を「解放済み属性の数」に応じて自動調整する。
-   最小幅(440px)を明示的な固定値にしているのでカード内容に押されて広がる
-   blowoutは起きない(1840px使用可能幅なら5個目は入らず必ず4列以下になる計算)。
+   最小幅(420px)を明示的な固定値にしているのでカード内容に押されて広がる
+   blowoutは起きない(画面paddingを差し引いた使用可能幅なら5個目は入らず必ず4列以下になる計算)。
    序盤(属性3個解放)は3列に大きく広がり、終盤(15個解放)は4列×4行に収まる */
 #screen-attr-select .attr-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
-  gap: 14px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 19px 27px;
 }
 
 #screen-attr-select .attr-card {
   width: auto;
   min-width: 0;
-  padding: 18px;
+  padding: 24px;
 }
 
 #screen-attr-select .attr-card img {
   width: 100%;
-  max-width: 104px;
+  max-width: 125px;
   height: auto;
   aspect-ratio: 1 / 1;
   margin: 0 auto 10px;
 }
 
 #screen-attr-select .attr-card h3 {
-  font-size: 16px;
+  font-size: 22px;
   margin: 4px 0;
 }
 
 #screen-attr-select .attr-card p {
-  font-size: 14px;
+  font-size: 19px;
   line-height: 1.4;
   margin: 0;
   overflow-wrap: break-word;
@@ -98,7 +98,7 @@
 
 #screen-attr-confirm {
   width: 100%;
-  padding: 40px;
+  padding: 54px;
   background: linear-gradient(180deg, #700000, #300000);
   color: #fff;
   box-sizing: border-box;
@@ -111,36 +111,36 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 60px;
+  gap: 81px;
 }
 
 /* 左側（画像。相対サイズを下げて横並びを維持しやすくする） */
 .attr-confirm-left {
-  flex: 0 1 220px;
+  flex: 0 1 297px;
   text-align: center;
 }
 
 .attr-confirm-left img {
   width: 65%;
-  max-width: 200px;
+  max-width: 270px;
   filter: drop-shadow(0 0 20px rgba(255,255,255,0.3));
 }
 
 /* 右側（テキスト・ボタン。画像のすぐ右に表示） */
 .attr-confirm-right {
-  flex: 1 1 420px;
-  max-width: 600px;
+  flex: 1 1 567px;
+  max-width: 810px;
 }
 
 .attr-confirm-title {
-  font-size: 32px;
+  font-size: 43px;
   font-weight: 900;
   margin-bottom: 20px;
 }
 
 .attr-confirm-desc {
   background: rgba(255,255,255,0.1);
-  padding: 20px;
+  padding: 27px;
   border-radius: 12px;
   margin-bottom: 30px;
   line-height: 1.6;
@@ -149,14 +149,14 @@
 .attr-confirm-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 27px;
 }
 
 
 /* ===== cpuのscc ===== */
 #screen-cpu-attr-select {
   position: relative;
-  padding: 40px;
+  padding: 54px;
   text-align: center;
   /* box-sizingの指定漏れでpaddingが幅に上乗せされ、画面が実質2000px幅になっていた
      (#screen-attr-selectには元々あった)。グリッドの右端がキャンバス外にはみ出す原因だったため追加 */
@@ -166,14 +166,14 @@
 /* 横4個ぶんのサイズを最小幅にしてauto-fitで並べる(属性選択画面と同じ方針・同じ理由) */
 #screen-cpu-attr-select .attr-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
-  gap: 14px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 19px 27px;
 }
 
 #screen-cpu-attr-select .attr-card {
   width: auto;
   min-width: 0;
-  padding: 18px;
+  padding: 24px;
   background: rgba(255,255,255,0.1);
   border-radius: 12px;
   cursor: pointer;
@@ -183,7 +183,7 @@
 
 #screen-cpu-attr-select .attr-card img {
   width: 100%;
-  max-width: 104px;
+  max-width: 125px;
   height: auto;
   aspect-ratio: 1 / 1;
   object-fit: contain;
@@ -191,12 +191,12 @@
 }
 
 #screen-cpu-attr-select .attr-card h3 {
-  font-size: 16px;
+  font-size: 22px;
   margin: 4px 0;
 }
 
 #screen-cpu-attr-select .attr-card p {
-  font-size: 14px;
+  font-size: 19px;
   line-height: 1.4;
   margin: 0;
   overflow-wrap: break-word;
@@ -216,13 +216,13 @@
 /* ===== cpu属性確認画面 ===== */
 #screen-cpu-attr-confirm {
   position: relative;
-  padding: 40px;
+  padding: 54px;
   text-align: center;
   box-sizing: border-box;
 }
 
 .confirm-img {
-  max-width: 200px;   /* 好きなサイズに調整 */
+  max-width: 270px;   /* 好きなサイズに調整 */
   width: 100%;
   height: auto;
   display: block;

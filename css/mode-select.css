@@ -9,11 +9,11 @@
   display: flex;
   flex-direction: column;
   justify-content: center; /* 画面が縦に余っていてもボタン群が上に張り付かず、中央寄り（結果的に下寄り）に来るようにする */
-  gap: 18px;
-  padding: 32px;
+  gap: 24px;
+  padding: 43px;
   /* コイン表示（.mode-topbar）を絶対配置で右上に浮かせている分、
      ボタン群と重ならないよう上部の余白を確保する */
-  padding-top: 90px;
+  padding-top: 122px;
 }
 
 /* コイン表示は中央寄せの対象から外し、常に右上に固定表示する */
@@ -25,18 +25,18 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 14px;
+  gap: 19px;
   flex-wrap: wrap;
 }
 
 .mode-resource-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 15px;
+  gap: 8px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
-  padding: 6px 18px;
+  padding: 8px 24px;
   background: rgba(0, 0, 0, 0.55);
   border-radius: 999px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -50,8 +50,8 @@
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 28px 10px 10px;
+  gap: 22px;
+  padding: 14px 38px 14px 14px;
   background: rgba(0, 0, 0, 0.55);
   border: none;
   border-radius: 999px;
@@ -65,14 +65,14 @@
 }
 
 .profile-chip-name {
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
 }
 
 /* プロフィールアイコン(モード選択の小さいチップ・プロフィール画面の大きい見出しの両方で使う) */
 .profile-icon {
-  width: 64px;
-  height: 64px;
+  width: 86px;
+  height: 86px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -90,19 +90,19 @@
 }
 
 .profile-icon-large {
-  width: 100px;
-  height: 100px;
+  width: 135px;
+  height: 135px;
 }
 
 .profile-panel {
-  max-width: 720px;
+  max-width: 970px;
   text-align: left;
 }
 
 .profile-header {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 27px;
   margin-bottom: 24px;
 }
 
@@ -110,17 +110,17 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: 14px;
 }
 
 .profile-name-large {
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
 }
 
 .profile-section {
   margin-bottom: 20px;
-  padding-bottom: 20px;
+  padding-bottom: 27px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 
@@ -132,20 +132,20 @@
 
 .profile-section h3 {
   margin: 0 0 10px;
-  font-size: 16px;
+  font-size: 22px;
 }
 
 .profile-hand-stats {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
 .profile-stat-row {
   display: flex;
   justify-content: space-between;
-  max-width: 280px;
-  font-size: 14px;
+  max-width: 380px;
+  font-size: 19px;
 }
 

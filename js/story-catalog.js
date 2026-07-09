@@ -278,7 +278,14 @@ export const ITEM_CARD_CATALOG = {
   powerUp:     { name: "闘気の残滓", desc: "最大パワー+1",                   apply(p) { p.maxPower += 1; } },
   fireEmber:   { name: "業火の種",   desc: "（炎専用）攻撃力上昇+2",         apply(p) { p.fireAtkBonus = (p.fireAtkBonus || 0) + 2; }, attribute: "fire" },
   thunderCore: { name: "雷核",       desc: "（雷専用）チャージ+2",           apply(p) { p.thunderCharge = Math.min((p.thunderCharge || 0) + 2, 5); }, attribute: "thunder" },
-  iceHeart:    { name: "氷結の心臓", desc: "（氷専用）凍結準備が発動済みに", apply(p) { p.freezeReady = true; }, attribute: "ice" },
+  // 2枚目以降は「氷結の残響」と同じ追加チャージとして積み上がる(1枚目は即時発動のみのため無駄にならない)
+  iceHeart:    { name: "氷結の心臓", desc: "（氷専用）凍結準備が発動済みに（2枚目以降は追加チャージとして蓄積）", apply(p) {
+    if (p.freezeReady) {
+      p.iceEchoCharges = (p.iceEchoCharges || 0) + 1;
+    } else {
+      p.freezeReady = true;
+    }
+  }, attribute: "ice" },
 
   // ▼ 汎用カード18種(数値強化枠)
   emberEcho:   { name: "業炎の残り火", desc: "攻撃力+1（全属性共通）", apply(p) { p.genericAtkBonus = (p.genericAtkBonus || 0) + 1; } },
@@ -304,21 +311,30 @@ export const ITEM_CARD_CATALOG = {
   },
   desperateVow:        { name: "背水の誓い", desc: "HPが50%以下の間、攻撃力+2", apply(p) { p.itemLowHpAtkBonus = (p.itemLowHpAtkBonus || 0) + 2; } },
   selfSacrificeStrike: { name: "捨て身の一撃", desc: "グーで与ダメ+4。ただし与ダメの半分を自分も被弾する", apply(p) { p.itemRockAtkBonus = (p.itemRockAtkBonus || 0) + 4; } },
-  wagerToken:          { name: "賭け金の証", desc: "負けた次の1回、グーのパワー消費コストが無料になる", apply(p) { p.itemFreeCostEnabled = true; } },
+  // 賭け金の証：所持枚数分だけ「次に負けた時、グーが無料」を連続して発動できる(1枚ごとに1回分プールされる)
+  wagerToken:          { name: "賭け金の証", desc: "負けた次の1回、グーのパワー消費コストが無料になる（枚数分プールされる）", apply(p) { p.itemFreeCostCharges = (p.itemFreeCostCharges || 0) + 1; } },
 
   // ▼ 汎用カード18種(状態異常・妨害の汎用化枠)
-  poisonVial:    { name: "小瓶の毒",   desc: "勝利時、相手に毒1スタックを追加する", apply(p) { p.itemPoisonOnWin = true; } },
-  curseDoll:     { name: "呪いの人形", desc: "パワー消費のたびに相手へ呪いを+1する", apply(p) { p.itemCurseOnPowerUse = true; } },
+  poisonVial:    { name: "小瓶の毒",   desc: "勝利時、相手に毒1スタックを追加する", apply(p) { p.itemPoisonOnWinStacks = (p.itemPoisonOnWinStacks || 0) + 1; } },
+  curseDoll:     { name: "呪いの人形", desc: "パワー消費のたびに相手へ呪いを+1する", apply(p) { p.itemCurseOnPowerUseStacks = (p.itemCurseOnPowerUseStacks || 0) + 1; } },
   freezingBreath:{ name: "凍える吐息", desc: "勝利時20%で相手の次のパー獲得を無効化する", apply(p) { p.itemFreezeChanceOnWin = (p.itemFreezeChanceOnWin || 0) + 0.2; } },
-  spiderThread:  { name: "蜘蛛の糸",   desc: "あいこの時、相手のパワーを1奪う", apply(p) { p.itemPowerStealOnDraw = true; } },
+  spiderThread:  { name: "蜘蛛の糸",   desc: "あいこの時、相手のパワーを1奪う", apply(p) { p.itemPowerStealOnDrawStacks = (p.itemPowerStealOnDrawStacks || 0) + 1; } },
   shadowWhisper: { name: "影のささやき", desc: "勝利時10%で追加1ダメージ", apply(p) { p.itemExtraDmgChanceOnHit = (p.itemExtraDmgChanceOnHit || 0) + 0.1; } },
 
   // ▼ 汎用カード18種(経済・立ち回り枠)
-  veteranWisdom:   { name: "老練の心得", desc: "あいこ時、パワー+1", apply(p) { p.itemPowerOnDraw = true; } },
-  windSprintBoots: { name: "疾風の靴",   desc: "直前と違う手を出すたびにパワー+1", apply(p) { p.itemPowerOnHandChange = true; p.itemLastHandForBoots = null; } },
+  veteranWisdom:   { name: "老練の心得", desc: "あいこ時、パワー+1", apply(p) { p.itemPowerOnDrawStacks = (p.itemPowerOnDrawStacks || 0) + 1; } },
+  windSprintBoots: { name: "疾風の靴",   desc: "直前と違う手を出すたびにパワー+1", apply(p) {
+    p.itemPowerOnHandChangeStacks = (p.itemPowerOnHandChangeStacks || 0) + 1;
+    if (p.itemLastHandForBoots === undefined) p.itemLastHandForBoots = null;
+  } },
   merchantsEye:    { name: "商人の目利き", desc: "次のアイテムカード選択の選択肢が1枚増える", apply(p) { p.itemExtraCardChoicePending = true; } },
-  savingsCreed:    { name: "貯蓄の心得", desc: "パワーが上限を超えた分がHP回復に変換される", apply(p) { p.itemOverflowPowerToHeal = true; } },
-  pilgrimsStaff:   { name: "巡礼の杖",   desc: "3ターンごとにHPが2回復する", apply(p) { p.itemPilgrimStaffActive = true; p.itemPilgrimStaffTurns = 0; } },
+  // 「超過分×所持枚数」がそのまま回復量になる(超過分は1になりがちなため、%刻みだと切り捨てで
+  // 奇数枚しか効かなくなる問題があった。1枚ごとに必ず回復量が1段ずつ伸びる設計にしている)
+  savingsCreed:    { name: "貯蓄の心得", desc: "パワーが上限を超えた分がHP回復に変換される（2枚目以降は変換量がさらに増える）", apply(p) { p.itemOverflowPowerToHealStacks = (p.itemOverflowPowerToHealStacks || 0) + 1; } },
+  pilgrimsStaff:   { name: "巡礼の杖",   desc: "3ターンごとにHPが2回復する", apply(p) {
+    p.itemPilgrimStaffStacks = (p.itemPilgrimStaffStacks || 0) + 1;
+    if (p.itemPilgrimStaffTurns === undefined) p.itemPilgrimStaffTurns = 0;
+  } },
 
   // ▼ 属性専用カード(15属性×2種、既存3種(fireEmber/thunderCore/iceHeart)の2枚目)
   fireRageUnlock:  { name: "怒りの解放", desc: "（炎専用）HPに関わらず怒り状態(攻撃力+2)を即座に発動する", apply(p) { p.fireRage = true; }, attribute: "fire" },
@@ -343,11 +359,17 @@ export const ITEM_CARD_CATALOG = {
   vampireCrimsonThirst:{ name: "深紅の渇き", desc: "（吸血専用）吸血の回復率+15%", apply(p) { p.itemVampireHealRateBonus = (p.itemVampireHealRateBonus || 0) + 0.15; }, attribute: "vampire" },
   vampireFangMark:     { name: "牙の刻印",   desc: "（吸血専用）グー(パワー消費時)の固定ダメージ+2", apply(p) { p.itemVampireRockBonus = (p.itemVampireRockBonus || 0) + 2; }, attribute: "vampire" },
 
-  doppelMirrorVow: { name: "鏡合わせの誓い", desc: "（ドッペルゲンガー専用）あいこ反撃強化の閾値を4回に短縮する", apply(p) { p.itemDoppelThreshold = 4; }, attribute: "doppel" },
+  // 1枚目は基本閾値(7回)を4回に短縮、2枚目以降はさらに-2ずつ短縮する(下限2回)
+  doppelMirrorVow: { name: "鏡合わせの誓い", desc: "（ドッペルゲンガー専用）あいこ反撃強化の閾値を4回に短縮する（2枚目以降はさらに-2、下限2回）", apply(p) {
+    p.itemDoppelThreshold = p.itemDoppelThreshold ? Math.max(2, p.itemDoppelThreshold - 2) : 4;
+  }, attribute: "doppel" },
   doppelPhantomBlade:{ name: "虚像の刃",     desc: "（ドッペルゲンガー専用）勝利時の固定ダメージ+2", apply(p) { p.itemDoppelWinBonus = (p.itemDoppelWinBonus || 0) + 2; }, attribute: "doppel" },
 
   curseAmplify:{ name: "呪詛の増幅",   desc: "（呪術専用）パワー消費時の呪い付与量+1", apply(p) { p.itemCurseStackBonus = (p.itemCurseStackBonus || 0) + 1; }, attribute: "curse" },
-  curseOldTome:{ name: "古き呪いの書", desc: "（呪術専用）相手の呪いスタックが5以上の間、パー限定を解除しどの手にもダメージが乗る", apply(p) { p.itemCurseAnyHandThreshold = 5; }, attribute: "curse" },
+  // 1枚目は閾値5、2枚目以降はさらに-2ずつ短縮する(下限2)
+  curseOldTome:{ name: "古き呪いの書", desc: "（呪術専用）相手の呪いスタックが5以上の間、パー限定を解除しどの手にもダメージが乗る（2枚目以降はさらに-2、下限2）", apply(p) {
+    p.itemCurseAnyHandThreshold = p.itemCurseAnyHandThreshold ? Math.max(2, p.itemCurseAnyHandThreshold - 2) : 5;
+  }, attribute: "curse" },
 
   cannonArmorUp:  { name: "増加装甲", desc: "（砲台専用）被弾時のパワー獲得+2", apply(p) { p.itemCannonGainBonus = (p.itemCannonGainBonus || 0) + 2; }, attribute: "cannon" },
   cannonBoreUp:   { name: "口径拡張", desc: "（砲台専用）最大パワー+6", apply(p) { p.maxPower += 6; }, attribute: "cannon" },

@@ -1132,14 +1132,6 @@ function startStoryEnemy() {
   // 誤ってそれを使ってしまうため、通常のMath.random()に戻す
   resetOnlineRng();
 
-  // プレイヤーは(CPU側と違って)敵が変わってもinitAttribute()を呼び直していないため、
-  // 炎のfireAtkBonus/fireRageのようにターン経過で無制限に積み上がるステータスがあると、
-  // 連戦が長引くほど炎だけがどんどん有利になってしまう。属性ごとにonNewBattle()を
-  // 定義しておけば、次の敵に切り替わるたびにここでリセットできる(炎以外は今のところ未定義)。
-  if (ATTR_LOGIC[playerAttribute].onNewBattle) {
-    ATTR_LOGIC[playerAttribute].onNewBattle(playerState);
-  }
-
   // 次の敵に切り替わる際、体力が減ったまま連戦が続くと詰みやすくなるため、
   // 減っている分の半分だけ回復する（全回復にはしない）。
   const missingHp = playerState.maxHp - playerState.hp;
@@ -1214,12 +1206,25 @@ function renderItemCardChoice() {
   playerState.itemExtraCardChoicePending = false;
   const offeredIds = pickRandomCardIds(pool, choiceCount);
 
-  document.getElementById("item-card-list").innerHTML = offeredIds.map(id => {
+  document.getElementById("item-card-list").innerHTML = offeredIds.map((id, index) => {
     const card = ITEM_CARD_CATALOG[id];
+    const attrData = card.attribute ? ATTR_DATA[card.attribute] : null;
+    // カードが上から順番に落ちてくる演出(itemCardDropキーフレーム)の遅延を、
+    // 表示順(index)ごとにずらして1枚ずつ着地するように見せる
+    const colorVar = attrData ? `--item-choice-color: ${attrData.color}; ` : "";
+    const style = `style="${colorVar}animation-delay: ${index * 0.12}s"`;
+    const iconHtml = attrData
+      ? `<img src="${attrData.img}" class="item-choice-icon-img" alt="">`
+      : `<div class="item-choice-icon-generic">🎴</div>`;
     return `
-      <div class="skin-card clickable item-card-option" data-card="${id}">
-        <div class="skin-name">${card.name}</div>
-        <div class="skin-status">${card.desc}</div>
+      <div class="item-choice-card item-card-option" data-card="${id}" ${style}>
+        <div class="item-choice-icon-wrap">
+          ${iconHtml}
+          <span class="item-choice-badge"></span>
+        </div>
+        <div class="item-choice-name">${card.name}</div>
+        <div class="item-choice-desc">${card.desc}</div>
+        <button type="button" class="item-choice-select-btn">選択する</button>
       </div>
     `;
   }).join("");
@@ -1296,6 +1301,17 @@ function handleStoryEnemyDefeated() {
   const hasNextEnemy = battleContext.enemyIndex + 1 < stage.enemies.length;
 
   if (hasNextEnemy) {
+    // プレイヤーは(CPU側と違って)敵が変わってもinitAttribute()を呼び直していないため、
+    // 炎のfireAtkBonus/fireRageのようにターン経過で無制限に積み上がるステータスがあると、
+    // 連戦が長引くほど炎だけがどんどん有利になってしまう。属性ごとにonNewBattle()を
+    // 定義しておけば、次の敵に切り替わるたびにここでリセットできる(炎以外は今のところ未定義)。
+    // ここでリセットしてからアイテムカードを選ばせることで、「怒りの解放」等の即時発動系カードの
+    // 効果がstartStoryEnemy()側のリセットで直後に消されてしまう不具合を防ぐ
+    // (以前はstartStoryEnemy()側でリセットしていたため、カード選択→apply()の直後に
+    // 打ち消されてしまい、効果が反映されないバグになっていた)。
+    if (ATTR_LOGIC[playerAttribute].onNewBattle) {
+      ATTR_LOGIC[playerAttribute].onNewBattle(playerState);
+    }
     renderItemCardChoice();
     showScreen("screen-item-card-select");
   } else if (stage.clearStory) {

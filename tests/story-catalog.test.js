@@ -167,6 +167,69 @@ test("ITEM_CARD_CATALOG: fireRageUnlock/thunderSpareCell/iceEchoのapply()", () 
   assert.equal(p3.iceEchoCharges, 1);
 });
 
+test("ITEM_CARD_CATALOG: iceHeartは2枚目以降freezeReadyではなくiceEchoChargesに積み上がる", () => {
+  const player = {};
+  ITEM_CARD_CATALOG.iceHeart.apply(player);
+  assert.equal(player.freezeReady, true);
+  assert.equal(player.iceEchoCharges, undefined);
+
+  ITEM_CARD_CATALOG.iceHeart.apply(player);
+  assert.equal(player.freezeReady, true, "2枚目でfreezeReadyがfalseに戻ってはいけない");
+  assert.equal(player.iceEchoCharges, 1);
+
+  ITEM_CARD_CATALOG.iceHeart.apply(player);
+  assert.equal(player.iceEchoCharges, 2);
+});
+
+test("ITEM_CARD_CATALOG: wagerToken/poisonVial/curseDoll/spiderThread/veteranWisdom/windSprintBoots/pilgrimsStaffは枚数分カウンタが積み上がる", () => {
+  const player = {};
+  ITEM_CARD_CATALOG.wagerToken.apply(player);
+  ITEM_CARD_CATALOG.wagerToken.apply(player);
+  assert.equal(player.itemFreeCostCharges, 2);
+
+  ITEM_CARD_CATALOG.poisonVial.apply(player);
+  ITEM_CARD_CATALOG.poisonVial.apply(player);
+  assert.equal(player.itemPoisonOnWinStacks, 2);
+
+  ITEM_CARD_CATALOG.curseDoll.apply(player);
+  assert.equal(player.itemCurseOnPowerUseStacks, 1);
+
+  ITEM_CARD_CATALOG.spiderThread.apply(player);
+  ITEM_CARD_CATALOG.spiderThread.apply(player);
+  ITEM_CARD_CATALOG.spiderThread.apply(player);
+  assert.equal(player.itemPowerStealOnDrawStacks, 3);
+
+  ITEM_CARD_CATALOG.veteranWisdom.apply(player);
+  assert.equal(player.itemPowerOnDrawStacks, 1);
+
+  ITEM_CARD_CATALOG.windSprintBoots.apply(player);
+  ITEM_CARD_CATALOG.windSprintBoots.apply(player);
+  assert.equal(player.itemPowerOnHandChangeStacks, 2);
+
+  ITEM_CARD_CATALOG.pilgrimsStaff.apply(player);
+  ITEM_CARD_CATALOG.pilgrimsStaff.apply(player);
+  assert.equal(player.itemPilgrimStaffStacks, 2);
+  assert.equal(player.itemPilgrimStaffTurns, 0);
+});
+
+test("ITEM_CARD_CATALOG: doppelMirrorVow/curseOldTomeは1枚目の値から2枚目以降さらに-2され下限2でクランプされる", () => {
+  const doppel = {};
+  ITEM_CARD_CATALOG.doppelMirrorVow.apply(doppel);
+  assert.equal(doppel.itemDoppelThreshold, 4);
+  ITEM_CARD_CATALOG.doppelMirrorVow.apply(doppel);
+  assert.equal(doppel.itemDoppelThreshold, 2);
+  ITEM_CARD_CATALOG.doppelMirrorVow.apply(doppel);
+  assert.equal(doppel.itemDoppelThreshold, 2, "下限2でクランプされるはず");
+
+  const curse = {};
+  ITEM_CARD_CATALOG.curseOldTome.apply(curse);
+  assert.equal(curse.itemCurseAnyHandThreshold, 5);
+  ITEM_CARD_CATALOG.curseOldTome.apply(curse);
+  assert.equal(curse.itemCurseAnyHandThreshold, 3);
+  ITEM_CARD_CATALOG.curseOldTome.apply(curse);
+  assert.equal(curse.itemCurseAnyHandThreshold, 2, "下限2でクランプされるはず");
+});
+
 test("ITEM_CARD_CATALOG: stoneMemory/stoneBoulderは既存の蓄積値に加算する", () => {
   const player = { stoneDefenseReduction: 2, stoneAtkBonus: 1 };
   ITEM_CARD_CATALOG.stoneMemory.apply(player);

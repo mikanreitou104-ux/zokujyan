@@ -1,21 +1,21 @@
 /* ===== オンライン対戦：ルーム作成/参加ロビー ===== */
 .online-lobby-panel {
-  max-width: 560px;
+  max-width: 756px;
   text-align: left;
 }
 
 .online-lobby-block {
-  padding: 10px 0;
+  padding: 14px 0;
 }
 
 .online-lobby-block h3 {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: 24px;
 }
 
 .online-lobby-desc {
   margin: 0 0 14px;
-  font-size: 14px;
+  font-size: 19px;
   opacity: 0.8;
 }
 
@@ -26,7 +26,7 @@
 }
 
 .online-join-input {
-  max-width: 240px;
+  max-width: 324px;
   margin-bottom: 14px;
   text-transform: uppercase;
   letter-spacing: 4px;
@@ -36,7 +36,7 @@
   margin: 12px 0 0;
   min-height: 1.4em;
   color: #ff6b6b;
-  font-size: 14px;
+  font-size: 19px;
 }
 
 /* ===== オンライン対戦：待機画面(相手参加待ち・属性選択待ち・再戦待ち共用) =====
@@ -48,7 +48,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  padding: 40px;
+  padding: 54px;
   background: rgba(0, 0, 0, 0.6);
   border-radius: 16px;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
@@ -59,7 +59,7 @@
 }
 
 .online-waiting-code {
-  font-size: 48px;
+  font-size: 65px;
   font-weight: 900;
   letter-spacing: 10px;
   color: #ffcc00;
@@ -67,14 +67,14 @@
 }
 
 .online-waiting-message {
-  font-size: 20px;
+  font-size: 27px;
   font-weight: 700;
   margin-bottom: 24px;
 }
 
 .online-waiting-spinner {
-  width: 44px;
-  height: 44px;
+  width: 59px;
+  height: 59px;
   margin: 0 auto 28px;
   border: 5px solid rgba(255, 255, 255, 0.25);
   border-top-color: #ffcc00;
@@ -89,7 +89,7 @@
 .mode-main {
   display: flex;
   flex: 0 1 auto;
-  gap: 32px;
+  gap: 43px;
   align-items: stretch;
 }
 
@@ -97,8 +97,8 @@
 .mode-character-panel {
   position: relative;
   flex: 0 0 38%;
-  max-width: 560px;
-  min-height: 420px;
+  max-width: 756px;
+  min-height: 567px;
   border-radius: 18px;
   overflow: hidden;
   background:
@@ -108,7 +108,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 32px;
+  padding-bottom: 43px;
   box-sizing: border-box;
 }
 
@@ -122,7 +122,7 @@
 .mode-character-art {
   position: relative;
   width: 70%;
-  max-width: 320px;
+  max-width: 432px;
   filter: drop-shadow(0 10px 25px rgba(0,0,0,0.5));
 }
 
@@ -130,21 +130,21 @@
 .mode-grid {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  grid-auto-rows: minmax(90px, auto);
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-auto-rows: minmax(120px, auto);
+  gap: 27px;
   align-content: start;
 }
 
 .mode-btn.tile-wide {
   grid-column: 1 / -1;
-  min-height: 110px;
-  font-size: 26px;
+  min-height: 148px;
+  font-size: 35px;
 }
 
 .mode-btn.tile {
-  min-height: 72px;
-  font-size: 19px;
+  min-height: 97px;
+  font-size: 26px;
 }
 
 /* ▼ ボタン共通デザイン。padding方式からグリッドセルが高さを決める方式に置き換え */
@@ -152,7 +152,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px 16px;
+  padding: 19px 22px;
   font-weight: 700;
   border-radius: 14px;
   border: none;
@@ -226,13 +226,13 @@
   position: absolute;
   top: -10px;
   right: -10px;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 6px;
-  border-radius: 13px;
+  min-width: 35px;
+  height: 35px;
+  padding: 0 8px;
+  border-radius: 18px;
   background: #ff3333;
   color: #fff;
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 800;
   display: flex;
   align-items: center;
@@ -268,8 +268,8 @@
   height: 50px;
   background: rgba(0,0,0,0.85);
   color: #fff;
-  padding: 20px;
-  font-size: 22px;
+  padding: 27px;
+  font-size: 30px;
   box-shadow: 0 -4px 10px rgba(0,0,0,0.5);
   transition: bottom 0.3s ease;
   pointer-events: none;
@@ -338,7 +338,7 @@
 
 
 .settings-tab {
-  padding: 20px;
+  padding: 27px;
   background: rgba(0,0,0,0.6);
   border-radius: 12px;
   color: #fff;
@@ -356,7 +356,7 @@
 .shop-tab-nav {
   display: flex;
   justify-content: center;
-  gap: 10px;
+  gap: 14px;
   flex-wrap: wrap;
   margin: 20px auto 0;
   width: 90%;
@@ -364,8 +364,8 @@
 
 .mymenu-tab-btn,
 .shop-tab-btn {
-  padding: 10px 22px;
-  font-size: 15px;
+  padding: 14px 30px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
   background: rgba(255,255,255,0.1);
@@ -411,7 +411,7 @@
 .volume-control label {
   display: block;
   margin-bottom: 8px;
-  font-size: 20px;
+  font-size: 27px;
 }
 
 #bgm-volume,
@@ -423,13 +423,13 @@
 .hand-input-mode-toggle {
   display: flex;
   justify-content: center;
-  gap: 10px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .hand-input-mode-btn {
-  padding: 10px 20px;
-  font-size: 15px;
+  padding: 14px 27px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
   background: rgba(255,255,255,0.1);
@@ -454,26 +454,38 @@
 #screen-quest,
 #screen-stage-select,
 #screen-stage-confirm,
-#screen-item-card-select,
 #screen-story-result {
   position: relative;
   z-index: 10;
   background: rgba(0,0,0,0.6);
   color: #fff;
-  padding-top: 40px;
+  padding-top: 54px;
   box-sizing: border-box;
+}
+
+/* アイテムカード獲得画面：ガチャ演出風に他の設定系画面とは違う専用の背景を持たせる */
+#screen-item-card-select {
+  position: relative;
+  z-index: 10;
+  background:
+    radial-gradient(circle at 50% 15%, rgba(140, 90, 255, 0.35), transparent 55%),
+    linear-gradient(180deg, #140b30, #050414 70%);
+  color: #fff;
+  padding-top: 60px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .story-attr-unlock {
   color: #ffd54a;
   font-weight: 900;
-  font-size: 20px;
+  font-size: 27px;
   text-shadow: 0 0 12px rgba(255, 213, 74, 0.7);
 }
 
 .coins-display {
   text-align: center;
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
   margin-top: 10px;
 }
@@ -481,14 +493,14 @@
 .skin-list {
   display: flex;
   justify-content: center;
-  gap: 20px;
+  gap: 27px;
   flex-wrap: wrap;
   margin-top: 16px;
 }
 
 .skin-card {
-  width: 140px;
-  padding: 16px;
+  width: 220px;
+  padding: 22px;
   background: rgba(255,255,255,0.08);
   border-radius: 14px;
   text-align: center;
@@ -496,16 +508,16 @@
 }
 
 .skin-card img {
-  width: 100px;
-  height: 100px;
+  width: 135px;
+  height: 135px;
   object-fit: contain;
   margin-bottom: 8px;
 }
 
 /* アイコン背景（色・グラデーション）のプレビュー用スウォッチ */
 .iconbg-swatch {
-  width: 80px;
-  height: 80px;
+  width: 108px;
+  height: 108px;
   border-radius: 50%;
   margin: 0 auto 8px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
@@ -514,7 +526,7 @@
 /* MYメニュー：アイコンタブ全体のレイアウト（左＝プレビュー、右＝選択リスト） */
 .icon-tab-layout {
   display: flex;
-  gap: 32px;
+  gap: 43px;
   align-items: flex-start;
 }
 
@@ -526,8 +538,8 @@
 }
 
 .icon-preview {
-  width: 120px;
-  height: 120px;
+  width: 162px;
+  height: 162px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -549,7 +561,7 @@
   min-width: 0;
   max-height: 480px;
   overflow-y: auto;
-  padding-right: 8px;
+  padding-right: 11px;
 }
 
 .settings-tab h3 {
@@ -567,7 +579,7 @@
 }
 
 .skin-card .skin-status {
-  font-size: 14px;
+  font-size: 19px;
   opacity: 0.85;
 }
 

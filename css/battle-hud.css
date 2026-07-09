@@ -2,8 +2,8 @@
 .hud-panel {
   position: absolute;
   z-index: var(--z-hud-panel);
-  width: 400px;
-  padding: 18px;
+  width: 540px;
+  padding: 24px;
   background: rgba(0, 0, 0, 0.5);
   border-radius: 14px;
   backdrop-filter: blur(4px);
@@ -23,13 +23,13 @@
   position: absolute;
   top: -42px;
   left: 0;
-  padding: 8px 16px;
+  padding: 11px 22px;
   background: rgba(0, 0, 0, 0.65);
   border: none;
   border-radius: 10px 10px 0 0;
   color: #fff;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 19px;
   cursor: pointer;
   transition: 0.2s;
   z-index: var(--z-hud-panel);
@@ -41,11 +41,11 @@
 }
 
 .item-card-list-box {
-  max-width: 520px;
+  max-width: 702px;
 }
 
 .item-card-list-body {
-  max-height: 420px;
+  max-height: 567px;
   overflow-y: auto;
   margin: 8px 0 0;
   text-align: left;
@@ -60,7 +60,7 @@
 .item-card-list-empty {
   opacity: 0.75;
   text-align: center;
-  padding: 12px 0;
+  padding: 16px 0;
 }
 
 /* 敵画像のすぐ右横に寄せる（画面端ではなく敵の近くに表示） */
@@ -72,7 +72,7 @@
 .hud-top {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .hud-bars {
@@ -82,7 +82,7 @@
 
 .hp-text {
   margin: 0 0 4px;
-  font-size: 18px;
+  font-size: 24px;
   font-weight: bold;
 }
 
@@ -90,8 +90,8 @@
    .player-hud/.cpu-hud(親要素)に設定し、こことHPバー(.bar div)の両方に反映される */
 .player-attr-box,
 .cpu-attr-box {
-  width: 78px;
-  height: 78px;
+  width: 105px;
+  height: 105px;
   flex-shrink: 0;
   background: rgba(0, 0, 0, 0.45); /* 半透明の黒 */
   border-radius: 12px;             /* 角丸 */
@@ -104,19 +104,19 @@
 
 .status-window {
   margin-top: 8px;
-  padding: 14px;
+  padding: 19px;
   background: rgba(0, 58, 49, 0.45);
   border-radius: 12px;
   backdrop-filter: blur(4px);
   box-shadow: 0 0 10px rgba(0, 181, 109, 0.4);
   color: #ffffff;
-  font-size: 16px;
+  font-size: 22px;
   box-sizing: border-box;
 }
 
 .status-title {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: 24px;
   font-weight: bold;
   text-align: center;
 }
@@ -136,7 +136,7 @@
 .status-row {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 14px;
   margin-bottom: 4px;
   line-height: 1.4;
 }
@@ -151,7 +151,7 @@
   top: 497px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 14px;
+  font-size: 19px;
   color: white;
   text-shadow: 0 0 6px black;
   white-space: nowrap;
@@ -162,7 +162,7 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 64px;
+  font-size: 86px;
   color: #fff;
   text-shadow: 0 0 20px #000;
   opacity: 0;
@@ -186,14 +186,14 @@
 
 .result-box {
   background: rgba(20, 20, 20, 0.9);
-  padding: 40px 60px;
+  padding: 54px 81px;
   border-radius: 16px;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
   text-align: center;
 }
 
 .result-message {
-  font-size: 36px;
+  font-size: 49px;
   font-weight: 900;
   color: #fff;
   margin-bottom: 30px;
@@ -203,7 +203,7 @@
 .result-buttons {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 19px;
 }
 
 .result-buttons button {
@@ -230,15 +230,15 @@
 
 .confirm-box {
   background: rgba(20, 20, 20, 0.9);
-  padding: 40px;
+  padding: 54px;
   border-radius: 16px;
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
   text-align: center;
-  max-width: 420px;
+  max-width: 567px;
 }
 
 .confirm-message {
-  font-size: 22px;
+  font-size: 30px;
   font-weight: 700;
   color: #fff;
   line-height: 1.6;
@@ -249,9 +249,9 @@
   display: block;
   width: 100%;
   box-sizing: border-box;
-  padding: 10px 14px;
+  padding: 14px 19px;
   margin-bottom: 24px;
-  font-size: 18px;
+  font-size: 24px;
   text-align: center;
   border: 2px solid rgba(255, 255, 255, 0.4);
   border-radius: 8px;
@@ -266,12 +266,12 @@
 
 .confirm-buttons {
   display: flex;
-  gap: 14px;
+  gap: 19px;
   justify-content: center;
 }
 
 .confirm-buttons button {
-  min-width: 120px;
+  min-width: 162px;
 }
 
 /*　バトル画面のcssここまで　*/
