@@ -197,9 +197,14 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       cpuState.thunderCharge = 3;
   }
 
-    // 「影のささやき」：一定確率で追加1ダメージ
-    if (playerState.itemExtraDmgChanceOnHit && Math.random() < playerState.itemExtraDmgChanceOnHit) {
-      damage += 1;
+    // 「影のささやき」：確率発動だと「発動していない感」が強いとの指摘を受け、
+    // 勝利のたびにカウントし一定間隔で確定発動する周期制に変更(2026-07-10)
+    if (playerState.itemShadowCycleLength) {
+      playerState.itemShadowWinCounter = (playerState.itemShadowWinCounter || 0) + 1;
+      if (playerState.itemShadowWinCounter >= playerState.itemShadowCycleLength) {
+        playerState.itemShadowWinCounter = 0;
+        damage += (playerState.itemShadowDmgBonus || 2);
+      }
     }
 
     cpuState.hp -= damage;
@@ -218,9 +223,13 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       }
     }
 
-    // 「凍える吐息」：一定確率で相手の次のパー獲得を無効化する(氷のfreezeReadyを流用)
-    if (playerState.itemFreezeChanceOnWin && Math.random() < playerState.itemFreezeChanceOnWin) {
-      playerState.freezeReady = true;
+    // 「凍える吐息」：影のささやきと同じ理由で確率発動をやめ、勝利N回ごとの確定発動にした(氷のfreezeReadyを流用)
+    if (playerState.itemFreezeCycleLength) {
+      playerState.itemFreezeWinCounter = (playerState.itemFreezeWinCounter || 0) + 1;
+      if (playerState.itemFreezeWinCounter >= playerState.itemFreezeCycleLength) {
+        playerState.itemFreezeWinCounter = 0;
+        playerState.freezeReady = true;
+      }
     }
 
     if (ATTR_LOGIC[cpuAttribute].onHpChange) {
@@ -276,6 +285,11 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
     incrementStat(`handWinCount.${["rock", "paper", "scissors"][playerHand]}`);
     callbacks.onRoundResult("win");
 
+    // 「連勝の証」：勝つたびに連勝ボーナスを積み増す(この勝利自体のダメージには乗らず、次以降に反映される)
+    if (playerState.itemWinStreakBonusPerWin) {
+      playerState.itemWinStreakCount = (playerState.itemWinStreakCount || 0) + playerState.itemWinStreakBonusPerWin;
+    }
+
     callbacks.playCpuDamageEffect(damage);
 
     // 10ダメージ以上を与えた瞬間は、通常の演出に加えてさらに派手なフラッシュ・シェイク・SEを重ねる
@@ -315,6 +329,20 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
 
     playerState.hp -= cpudamage;
 
+    // 「棘の鎧」：受けたダメージの一定割合を相手に反射する
+    if (playerState.itemThornReflectRate) {
+      const reflected = Math.floor(cpudamage * playerState.itemThornReflectRate);
+      if (reflected > 0) {
+        cpuState.hp = Math.max(0, cpuState.hp - reflected);
+        callbacks.showDamageNumber("cpu", reflected);
+      }
+    }
+
+    // 「連勝の証」：敗北で連勝ボーナスがリセットされる
+    if (playerState.itemWinStreakBonusPerWin) {
+      playerState.itemWinStreakCount = 0;
+    }
+
     if (ATTR_LOGIC[playerAttribute].onHpChange) {
       ATTR_LOGIC[playerAttribute].onHpChange(playerState);
     }
@@ -336,6 +364,13 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
 
     callbacks.playDamageEffect(cpudamage);
 
+    // 「不屈の護石」：致死ダメージをHP1で耐える(枚数分プールを1つ消費)
+    if (playerState.hp <= 0 && playerState.itemSurviveCharges > 0) {
+      playerState.itemSurviveCharges--;
+      playerState.hp = 1;
+      callbacks.showDamageNumber("player", 1, { heal: true });
+    }
+
     if (playerState.hp <= 0) {
       callbacks.handlePlayerDefeated();
       return;
@@ -351,6 +386,11 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
   } else {
     incrementStat("drawCount");
     callbacks.onRoundResult("draw");
+
+    // 「連勝の証」：あいこでも連勝ボーナスがリセットされる
+    if (playerState.itemWinStreakBonusPerWin) {
+      playerState.itemWinStreakCount = 0;
+    }
 
     let drawNote = "";
     if (playerPowerFrozen) drawNote += "（あなたは氷で凍結され、パワー上昇が無効化された）";
@@ -438,6 +478,12 @@ if (cpuAttribute === "thunder" && cpuChargeAtStart === (cpuState.thunderChargeMa
   if (cpuState.hp <= 0) {
     callbacks.handleCpuDefeated();
     return;
+  }
+  // 「不屈の護石」：毒やバーサーカーの自傷等、勝敗以外の経路での致死もHP1で耐える(枚数分プールを1つ消費)
+  if (playerState.hp <= 0 && playerState.itemSurviveCharges > 0) {
+    playerState.itemSurviveCharges--;
+    playerState.hp = 1;
+    callbacks.showDamageNumber("player", 1, { heal: true });
   }
   if (playerState.hp <= 0) {
     callbacks.handlePlayerDefeated();

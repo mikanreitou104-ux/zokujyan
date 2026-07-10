@@ -3,6 +3,7 @@
 // プレイヤーの永続データを扱う。DOM更新(コイン表示・クエストバッジ・プロフィール表示の再描画)は
 // main.js/quests.js側の責務なので、注入されたコールバック経由で呼び出す(setUICallbacks参照)。
 import { ATTR_BASE_STATUS } from "./attributes.js";
+import { EQUIPMENT_CATALOG, getEquipmentCellsAt, canPlaceCells } from "./equipment-catalog.js";
 
 let onCoinsChanged = () => {};
 let onQuestBadgeChanged = () => {};
@@ -62,7 +63,13 @@ export const DEFAULT_SAVE_DATA = {
     damageByAttribute: Object.keys(ATTR_BASE_STATUS).reduce((o, k) => (o[k] = 0, o), {}),
     attributePlayCount: Object.keys(ATTR_BASE_STATUS).reduce((o, k) => (o[k] = 0, o), {})
   },
-  clearedStages: []            // クリア済みステージID一覧（ストーリーモード）
+  clearedStages: [],           // クリア済みステージID一覧（ストーリーモード）
+  defeatedEnemyImages: [],     // ストーリーモードで一度でも倒した敵のimgパス一覧(ショップの「倒すと購入可能」条件に使用)
+  equipment: {                 // 装備システム(負けても失われない永続インベントリ、アイテムカードとは別物)
+    owned: {},                 // { [equipmentId]: 所持数 }
+    placements: [],            // [{ placementId, equipmentId, anchorRow, anchorCol, rotation, cells }]
+    nextPlacementId: 1
+  }
 };
 
 export function cloneDefaultSaveData() {
@@ -81,7 +88,8 @@ export function loadSaveData() {
       ...parsed,
       statBoosts: { ...DEFAULT_SAVE_DATA.statBoosts, ...(parsed.statBoosts || {}) },
       quests: { ...DEFAULT_SAVE_DATA.quests, ...(parsed.quests || {}) },
-      stats: { ...DEFAULT_SAVE_DATA.stats, ...(parsed.stats || {}) }
+      stats: { ...DEFAULT_SAVE_DATA.stats, ...(parsed.stats || {}) },
+      equipment: { ...DEFAULT_SAVE_DATA.equipment, ...(parsed.equipment || {}) }
     };
   } catch (e) {
     console.warn("セーブデータの読み込みに失敗したため初期化します", e);
@@ -201,10 +209,68 @@ export function ownIcon(iconId) {
   }
 }
 
+// ストーリーモードで敵を倒すたびに呼ぶ。その敵をimgで記録しておき、
+// ICON_CATALOG側のunlockEnemyImgと照合してショップでの購入可否を判定するのに使う
+// (このカードはあくまで「購入できるようになる」だけで、無料では手に入らない)。
+export function markEnemyDefeated(enemyImg) {
+  if (!saveData.defeatedEnemyImages.includes(enemyImg)) {
+    saveData.defeatedEnemyImages.push(enemyImg);
+    saveSaveData();
+  }
+}
+
+export function isEnemyDefeated(enemyImg) {
+  return saveData.defeatedEnemyImages.includes(enemyImg);
+}
+
 export function equipIcon(iconId) {
   if (!saveData.ownedIcons.includes(iconId)) return false;
   saveData.equippedIcon = iconId;
   saveSaveData();
   onProfileChanged();
+  return true;
+}
+
+// ===== 装備システム =====
+// 他のown系(ownSkin等)は「未所持なら1個追加」だが、装備は同じIDを複数所持・複数配置できる
+// 想定のため、所持数を加算する形に一般化している。
+export function ownEquipment(equipmentId, amount = 1) {
+  saveData.equipment.owned[equipmentId] = (saveData.equipment.owned[equipmentId] || 0) + amount;
+  saveSaveData();
+}
+
+export function getOwnedEquipmentCount(equipmentId) {
+  return saveData.equipment.owned[equipmentId] || 0;
+}
+
+export function getPlacedEquipmentCount(equipmentId) {
+  return saveData.equipment.placements.filter(p => p.equipmentId === equipmentId).length;
+}
+
+// 所持数のうち、まだグリッドに配置していない残数(UIが「あと何個置けるか」を出すのに使う)。
+export function getAvailableEquipmentCount(equipmentId) {
+  return getOwnedEquipmentCount(equipmentId) - getPlacedEquipmentCount(equipmentId);
+}
+
+// 成功時は新規placementId(1以上のnumber)を返す。同じ装備を複数枚同時配置できるため、
+// equipSkin等のようなboolean返却ではなく、後で特定の配置だけを外せるようidを返す設計にしている。
+export function equipEquipmentToGrid(equipmentId, anchorRow, anchorCol, rotation = 0) {
+  if (!EQUIPMENT_CATALOG[equipmentId]) return false;
+  if (getAvailableEquipmentCount(equipmentId) <= 0) return false;
+
+  const cells = getEquipmentCellsAt(equipmentId, anchorRow, anchorCol, rotation);
+  if (!canPlaceCells(saveData.equipment.placements, cells)) return false;
+
+  const placementId = saveData.equipment.nextPlacementId++;
+  saveData.equipment.placements.push({ placementId, equipmentId, anchorRow, anchorCol, rotation, cells });
+  saveSaveData();
+  return placementId;
+}
+
+export function unequipEquipmentFromGrid(placementId) {
+  const index = saveData.equipment.placements.findIndex(p => p.placementId === placementId);
+  if (index === -1) return false;
+  saveData.equipment.placements.splice(index, 1);
+  saveSaveData();
   return true;
 }

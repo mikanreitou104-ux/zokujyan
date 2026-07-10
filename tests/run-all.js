@@ -5,6 +5,7 @@ await import("./quests.test.js");
 await import("./battle.test.js");
 await import("./story-catalog.test.js");
 await import("./shop-catalog.test.js");
+await import("./equipment-catalog.test.js");
 
 if (process.exitCode) {
   console.log("いずれかのテストが失敗しました。");

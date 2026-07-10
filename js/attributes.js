@@ -130,6 +130,12 @@ export function attributeBonus(state, hand, attribute, usedPower) {
     // ▼ 属性を問わず加算される汎用ボーナス(アイテムカード用)
     bonus += (state.genericAtkBonus || 0);
 
+    // ▼ 「連勝の証」：連勝数に応じて積み上がる攻撃力(あいこ・敗北でitemWinStreakCountが0に戻る)
+    bonus += (state.itemWinStreakCount || 0);
+
+    // ▼ 「収集家の勲章」：所持アイテムカードの種類数が3増えるごとに main.js 側で再計算される攻撃力
+    bonus += (state.itemCollectorAtkBonus || 0);
+
     // ▼ HPが最大の50%以下の間だけ加算される汎用ボーナス(アイテムカード「背水の誓い」用)
     if (state.itemLowHpAtkBonus && state.hp <= state.maxHp / 2) {
         bonus += state.itemLowHpAtkBonus;
@@ -143,12 +149,18 @@ export function attributeBonus(state, hand, attribute, usedPower) {
         }
     }
 
+    // ▼ チョキ限定で加算される汎用ボーナス(アイテムカード「双刃の型」用)
+    if (hand === 2) {
+        bonus += (state.itemScissorsAtkBonus || 0);
+    }
+
     // ▼ 炎
     if (attribute === "fire") {
 
-        // グー限定 fireAtkBonus
+        // グー限定 fireAtkBonus(戦闘中にパワー消費するたびに貯まる分、敵が変わるとリセットされる)
+        // + fireItemAtkBonus(アイテムカード「業火の種」による永続分、リセットされない)
         if (hand === 0) {
-            bonus += (state.fireAtkBonus || 0);
+            bonus += (state.fireAtkBonus || 0) + (state.fireItemAtkBonus || 0);
         }
 
         // 全手に乗る fireRage
@@ -389,14 +401,18 @@ export const ATTR_LOGIC = {
     },
     // ストーリーモードは敵が変わってもプレイヤー側はinitAttribute()を呼び直さないため、
     // fireAtkBonus/fireRageを放っておくと連戦するほど無制限に強くなってしまう。
-    // main.js側のstartStoryEnemy()が次の敵に切り替わるたびにこれを呼び、他属性と足並みを揃える。
+    // main.js側のhandleStoryEnemyDefeated()が次の敵に切り替わるたびにこれを呼び、他属性と足並みを揃える。
+    // ただしfireItemAtkBonus(「業火の種」)/fireRagePermanent(「怒りの解放」)はアイテムカードによる
+    // 永続的な強化なので、他の14属性のアイテムカード同様リセットしない(ここでリセットされる
+    // fireAtkBonus/fireRageはあくまで戦闘中に自然に貯まる分・HP<=10の一時的な発動のみ)。
     onNewBattle(player) {
       player.fireAtkBonus = 0;
-      player.fireRage = false;
+      player.fireRage = Boolean(player.fireRagePermanent);
     },
     getStatus(player) {
+      const totalAtkBonus = (player.fireAtkBonus || 0) + (player.fireItemAtkBonus || 0);
       return [
-        { label: "攻撃力上昇", value: `+${player.fireAtkBonus}` },
+        { label: "攻撃力上昇", value: `+${totalAtkBonus}` },
         { label: "怒り状態", value: player.fireRage ? "ON" : "OFF" }
       ];
     }

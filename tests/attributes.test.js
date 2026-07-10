@@ -58,6 +58,40 @@ test("炎: パワー消費グー(usedPower)+fireAtkBonusでダメージが積み
   assert.equal(damage, 9);
 });
 
+test("汎用アイテムカード追加5種: 連勝の証/双刃の型/収集家の勲章はattributeBonusに反映される", () => {
+  const streak = freshState("thunder", { itemWinStreakCount: 3 });
+  assert.equal(attributeBonus(streak, 1, "thunder"), 3, "手の種類に関わらず乗るはず");
+
+  const blade = freshState("thunder", { itemScissorsAtkBonus: 2 });
+  assert.equal(attributeBonus(blade, 2, "thunder"), 2, "チョキには乗る");
+  assert.equal(attributeBonus(blade, 0, "thunder"), 0, "グーには乗らない");
+
+  const collector = freshState("thunder", { itemCollectorAtkBonus: 4 });
+  assert.equal(attributeBonus(collector, 1, "thunder"), 4);
+});
+
+test("炎: fireItemAtkBonus(アイテムカード「業火の種」の永続分)もグー限定でfireAtkBonusと合算される", () => {
+  const attacker = freshState("fire", { fireAtkBonus: 1, fireItemAtkBonus: 2 });
+  assert.equal(attributeBonus(attacker, 0, "fire"), 3);
+  assert.equal(attributeBonus(attacker, 2, "fire"), 0); // チョキには乗らない
+});
+
+test("炎: onNewBattle()はfireAtkBonus/fireRage(戦闘中に貯まる分)だけリセットし、fireItemAtkBonus/fireRagePermanent(アイテムカードの永続分)は保持する", () => {
+  const player = freshState("fire", {
+    fireAtkBonus: 5, fireRage: true,
+    fireItemAtkBonus: 2, fireRagePermanent: true
+  });
+  ATTR_LOGIC.fire.onNewBattle(player);
+  assert.equal(player.fireAtkBonus, 0, "戦闘中に貯まった分はリセットされるはず");
+  assert.equal(player.fireItemAtkBonus, 2, "アイテムカードの永続ボーナスは消えてはいけない");
+  assert.equal(player.fireRage, true, "永続解放済みなら次の戦闘もfireRageはONで始まるはず");
+
+  // 永続解放していない場合はfireRageもfalseにリセットされる
+  const player2 = freshState("fire", { fireAtkBonus: 3, fireRage: true });
+  ATTR_LOGIC.fire.onNewBattle(player2);
+  assert.equal(player2.fireRage, false);
+});
+
 test("石: damageReductionが被ダメージを軽減し、0未満にはならない", () => {
   const defender = freshState("stone", { stoneDefenseReduction: 5 });
   assert.equal(damageReduction(defender, "stone"), 5);

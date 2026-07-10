@@ -37,6 +37,8 @@ import {
   equipIconBg,
   ownIcon,
   equipIcon,
+  markEnemyDefeated,
+  isEnemyDefeated,
   setUICallbacks
 } from "./js/save-data.js";
 
@@ -349,9 +351,9 @@ function iconCardHTML(iconId, mode) {
 
   let actionHtml;
   if (mode === "shop") {
-    actionHtml = status === "locked"
-      ? `<button class="secondary-btn icon-buy-btn" data-icon="${iconId}">購入(${icon.price}コイン)</button>`
-      : `<div class="skin-status">所持済み</div>`;
+    actionHtml = status !== "locked"
+      ? `<div class="skin-status">所持済み</div>`
+      : `<button class="secondary-btn icon-buy-btn" data-icon="${iconId}">購入(${icon.price}コイン)</button>`;
   } else {
     if (status === "equipped") {
       actionHtml = `<div class="skin-status">装備中</div>`;
@@ -376,6 +378,8 @@ function renderShopIconList() {
   document.getElementById("shop-icon-list").innerHTML =
     Object.keys(ICON_CATALOG)
       .filter(id => !ICON_CATALOG[id].isDefault) // 初期所持のものだけショップから除外。購入済みのものは「所持済み」表示で残す
+      // unlockEnemyImgが設定されているアイコンは、対応する敵を一度倒すまでショップに表示しない
+      .filter(id => !ICON_CATALOG[id].unlockEnemyImg || isEnemyDefeated(ICON_CATALOG[id].unlockEnemyImg))
       .map(id => iconCardHTML(id, "shop")).join("");
 }
 
@@ -605,6 +609,35 @@ function showScreen(id) {
 }
 
 
+// タイトル→モード選択の暗転を「ただの待ち時間」ではなく先読みの時間として使う。
+// モード選択画面のホバー背景(bg-story等、1枚2.7〜3MBある)はCSSのurl()内でしか参照されていないため、
+// 本来は実際にホバーされた瞬間に初めてブラウザが取得を始め、そこで表示が遅れて見えていた。
+// 暗転が始まるタイミングでImage()により先に取得させ、読み込みが終わるまで暗転を維持してから
+// 画面を切り替えることで、モード選択が見えた時点でホバー背景も既に読み込み済みの状態にする。
+// 読み込みに失敗/時間がかかりすぎた場合に暗転から戻れなくなるのを防ぐため、
+// timeoutMs経過したら読み込み中でも先へ進む(真っ黒画面に固まらないための保険)。
+// 今後モード選択以外にも画面切り替え直後に使う画像が増えたら、同じ考え方で該当の
+// 遷移トリガー(暗転・カーテン等)でpreloadImages([...]).then(...)を使えばよい。
+function preloadImages(paths, timeoutMs = 6000) {
+  const loadPromise = Promise.all(paths.map(path => new Promise(resolve => {
+    const img = new Image();
+    img.onload = resolve;
+    img.onerror = resolve; // 読み込み失敗した画像があっても他を待ち続けて固まらないようにする
+    img.src = path;
+  })));
+  const timeoutPromise = new Promise(resolve => setTimeout(resolve, timeoutMs));
+  return Promise.race([loadPromise, timeoutPromise]);
+}
+
+const MODE_SELECT_HOVER_BACKGROUNDS = [
+  "./images/ui/story-bg.png",
+  "./images/ui/online-bg.png",
+  "./images/ui/shop-bg.png",
+  "./images/ui/quest-bg.png",
+  "./images/ui/cpu-bg.png",
+  "./images/ui/mymenu-bg.png"
+];
+
 const titleScreen = document.getElementById("screen-title");
 
 titleScreen.addEventListener("click", () => {
@@ -612,18 +645,26 @@ titleScreen.addEventListener("click", () => {
    // タイトルの文字を消す
   document.querySelector(".title-content").style.opacity = 0;
 
+  // モード選択画面へ暗転する間に、ホバーで切り替わる背景画像を先読みしておく
+  const backgroundsReady = preloadImages(MODE_SELECT_HOVER_BACKGROUNDS);
+
   // 黒帯を閉じる（中央に寄せる）
   closeCurtain();
 
-  // 閉じ切って見えなくなってから画面を切り替える（戦闘画面への遷移と同じ手順）
+  // 閉じ切って見えなくなってから画面を切り替える（戦闘画面への遷移と同じ手順）。
+  // 暗転の最短時間(600ms)はこれまで通り確保しつつ、先読みがまだ終わっていなければ
+  // 読み込みが終わるまで暗転を維持してから切り替える(遅い回線でも見えている間に読み込ませない)。
   setTimeout(() => {
     resetCurtain();
     closeCurtain();
-    showScreen("screen-mode");
 
-    setTimeout(() => {
-      openCurtain();
-    }, 50);
+    backgroundsReady.then(() => {
+      showScreen("screen-mode");
+
+      setTimeout(() => {
+        openCurtain();
+      }, 50);
+    });
   }, 600);
 });
 
@@ -1275,6 +1316,14 @@ document.getElementById("item-card-list").addEventListener("click", (e) => {
   ITEM_CARD_CATALOG[cardId].apply(playerState);
   battleContext.itemCardsTaken.push(cardId);
   incrementStat("itemCardsCollected");
+
+  // 「収集家の勲章」：%効率ではなく整数刻み(3種類ごとに+1)で再計算する。
+  // カードの「種類数」が対象なので、同じカードを2回取っても増えない。
+  if (playerState.itemCollectorActive) {
+    const distinctCardTypes = new Set(battleContext.itemCardsTaken).size;
+    playerState.itemCollectorAtkBonus = Math.floor(distinctCardTypes / 3);
+  }
+
   updateItemCardTab();
 
   if (awaitingInitialItemCard) {
@@ -1298,6 +1347,10 @@ document.getElementById("item-card-list").addEventListener("click", (e) => {
 // 敵を倒した直後の分岐：次の敵がいればアイテムカード選択、いなければステージクリア
 function handleStoryEnemyDefeated() {
   const stage = STAGE_CATALOG[battleContext.stageId];
+  const defeatedEnemy = stage.enemies[battleContext.enemyIndex];
+  // この敵を倒した記録を残す(ICON_CATALOGのunlockEnemyImgと照合し、ショップで購入できるようになる)
+  markEnemyDefeated(defeatedEnemy.img);
+
   const hasNextEnemy = battleContext.enemyIndex + 1 < stage.enemies.length;
 
   if (hasNextEnemy) {

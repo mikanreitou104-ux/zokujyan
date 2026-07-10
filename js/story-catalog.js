@@ -162,9 +162,9 @@ export const STAGE_CATALOG = {
         }
       },
       { name: "クラゲ", img: "./images/enemy/mizusra.png", attribute: "water",   maxHp: 30, maxPower: 3, aiType: "defensive" },
-      { name: "蜂", img: "./images/enemy/mizusra.png", attribute: "poison",  maxHp: 26, maxPower: 3, aiType: "aggressive" },
+      { name: "蜂", img: "./images/enemy/hachi.png", attribute: "poison",  maxHp: 26, maxPower: 3, aiType: "aggressive" },
       { name: "格闘スライム", img: "./images/enemy/mizusra.png", attribute: "fighter", maxHp: 28, maxPower: 3, aiType: "aggressive" },
-      { name: "ゴブリン", img: "./images/enemy/mizusra.png", attribute: "berserker", maxHp: 80, maxPower: 3, aiType: "balanced",
+      { name: "ゴブリン", img: "./images/enemy/goblin.png", attribute: "berserker", maxHp: 80, maxPower: 3, aiType: "balanced",
         // このstory.lines内で村が襲われている場面に切り替わる(該当行にbackground指定あり)ため、
         // 戦闘そのものもその続きとして村の光景(images/stage/3.png)で行う
         background: "./images/stage/3.png",
@@ -186,7 +186,7 @@ export const STAGE_CATALOG = {
           ]
         }
       },
-      { name: "ゴブリン", img: "./images/enemy/mizusra.png", attribute: "berserker",   maxHp: 80, maxPower: 3, aiType: "balanced",
+      { name: "ゴブリン", img: "./images/enemy/goblin.png", attribute: "berserker",   maxHp: 80, maxPower: 3, aiType: "balanced",
         background: "./images/stage/3.png",
         story: {
           background: "./images/stage/3.png",
@@ -276,7 +276,10 @@ export function pickRandomCardIds(pool, count) {
 export const ITEM_CARD_CATALOG = {
   hpUp:        { name: "生命の欠片", desc: "最大HP+12（全回復）",             apply(p) { p.maxHp += 12; p.hp = p.maxHp; } },
   powerUp:     { name: "闘気の残滓", desc: "最大パワー+1",                   apply(p) { p.maxPower += 1; } },
-  fireEmber:   { name: "業火の種",   desc: "（炎専用）攻撃力上昇+2",         apply(p) { p.fireAtkBonus = (p.fireAtkBonus || 0) + 2; }, attribute: "fire" },
+  // fireAtkBonus(戦闘中に自然に貯まる分)ではなくfireItemAtkBonusに加算する。
+  // fireAtkBonusは敵が変わるたびにonNewBattle()でリセットされるため、そちらに乗せると
+  // カードの効果が1戦闘しか持続しなくなってしまう(2026-07-09発覚)
+  fireEmber:   { name: "業火の種",   desc: "（炎専用）攻撃力上昇+2",         apply(p) { p.fireItemAtkBonus = (p.fireItemAtkBonus || 0) + 2; }, attribute: "fire" },
   thunderCore: { name: "雷核",       desc: "（雷専用）チャージ+2",           apply(p) { p.thunderCharge = Math.min((p.thunderCharge || 0) + 2, 5); }, attribute: "thunder" },
   // 2枚目以降は「氷結の残響」と同じ追加チャージとして積み上がる(1枚目は即時発動のみのため無駄にならない)
   iceHeart:    { name: "氷結の心臓", desc: "（氷専用）凍結準備が発動済みに（2枚目以降は追加チャージとして蓄積）", apply(p) {
@@ -317,9 +320,11 @@ export const ITEM_CARD_CATALOG = {
   // ▼ 汎用カード18種(状態異常・妨害の汎用化枠)
   poisonVial:    { name: "小瓶の毒",   desc: "勝利時、相手に毒1スタックを追加する", apply(p) { p.itemPoisonOnWinStacks = (p.itemPoisonOnWinStacks || 0) + 1; } },
   curseDoll:     { name: "呪いの人形", desc: "パワー消費のたびに相手へ呪いを+1する", apply(p) { p.itemCurseOnPowerUseStacks = (p.itemCurseOnPowerUseStacks || 0) + 1; } },
-  freezingBreath:{ name: "凍える吐息", desc: "勝利時20%で相手の次のパー獲得を無効化する", apply(p) { p.itemFreezeChanceOnWin = (p.itemFreezeChanceOnWin || 0) + 0.2; } },
+  // 確率発動だと「発動していない感」が強いとのフィードバックを受け、勝利N回ごとの確定発動サイクル制にした(2026-07-10)。
+  // 重複取得でサイクルが1ずつ短縮(最短2)し、より頻繁に発動するようになる。
+  freezingBreath:{ name: "凍える吐息", desc: "勝利4回ごとに確定で相手の次のパー獲得を無効化する（重複でサイクル短縮、最短2）", apply(p) { p.itemFreezeCycleLength = Math.max(2, (p.itemFreezeCycleLength || 5) - 1); p.itemFreezeWinCounter = p.itemFreezeWinCounter || 0; } },
   spiderThread:  { name: "蜘蛛の糸",   desc: "あいこの時、相手のパワーを1奪う", apply(p) { p.itemPowerStealOnDrawStacks = (p.itemPowerStealOnDrawStacks || 0) + 1; } },
-  shadowWhisper: { name: "影のささやき", desc: "勝利時10%で追加1ダメージ", apply(p) { p.itemExtraDmgChanceOnHit = (p.itemExtraDmgChanceOnHit || 0) + 0.1; } },
+  shadowWhisper: { name: "影のささやき", desc: "勝利4回ごとに確定で追加2ダメージ（重複でサイクル短縮・ダメージ増加）", apply(p) { p.itemShadowCycleLength = Math.max(2, (p.itemShadowCycleLength || 5) - 1); p.itemShadowDmgBonus = (p.itemShadowDmgBonus || 0) + 2; p.itemShadowWinCounter = p.itemShadowWinCounter || 0; } },
 
   // ▼ 汎用カード18種(経済・立ち回り枠)
   veteranWisdom:   { name: "老練の心得", desc: "あいこ時、パワー+1", apply(p) { p.itemPowerOnDrawStacks = (p.itemPowerOnDrawStacks || 0) + 1; } },
@@ -336,8 +341,24 @@ export const ITEM_CARD_CATALOG = {
     if (p.itemPilgrimStaffTurns === undefined) p.itemPilgrimStaffTurns = 0;
   } },
 
+  // ▼ 汎用カード追加5種(2026-07-10提案・実装)
+  // 連勝の証：勝つたびに+1ずつ積み上がる攻撃力(この勝利自体には乗らず、次の攻撃から反映)。あいこ・敗北で0に戻る。
+  winStreakBadge:  { name: "連勝の証",   desc: "勝利するたびに攻撃力+1が積み上がる（あいこ・敗北でリセット、上限なし）", apply(p) {
+    p.itemWinStreakBonusPerWin = (p.itemWinStreakBonusPerWin || 0) + 1;
+    if (p.itemWinStreakCount === undefined) p.itemWinStreakCount = 0;
+  } },
+  doubleBladeStyle:{ name: "双刃の型",   desc: "チョキの固定ダメージ+1（全属性共通）", apply(p) { p.itemScissorsAtkBonus = (p.itemScissorsAtkBonus || 0) + 1; } },
+  // 不屈の護石：致死ダメージをHP1で耐える保険。所持枚数分だけ発動回数がプールされる(賭け金の証と同じ方式)。
+  indomitableTalisman:{ name: "不屈の護石", desc: "致死ダメージを1回だけHP1で耐える（枚数分プールされる）", apply(p) { p.itemSurviveCharges = (p.itemSurviveCharges || 0) + 1; } },
+  thornArmor:      { name: "棘の鎧",     desc: "被ダメージ時、その20%（端数切り捨て）を相手に反射する（重複で反射率が上がる）", apply(p) { p.itemThornReflectRate = (p.itemThornReflectRate || 0) + 0.2; } },
+  // 収集家の勲章：所持カードの「種類数」に応じたボーナスなので、apply()自体は目印を立てるだけ。
+  // 実際の計算(3種類ごとに+1、%効率ではなく整数刻み)はカード取得のたびにmain.js側で再計算する(itemCollectorAtkBonus)。
+  collectorsMedal: { name: "収集家の勲章", desc: "所持しているアイテムカードの種類数が3増えるごとに攻撃力+1", apply(p) { p.itemCollectorActive = true; } },
+
   // ▼ 属性専用カード(15属性×2種、既存3種(fireEmber/thunderCore/iceHeart)の2枚目)
-  fireRageUnlock:  { name: "怒りの解放", desc: "（炎専用）HPに関わらず怒り状態(攻撃力+2)を即座に発動する", apply(p) { p.fireRage = true; }, attribute: "fire" },
+  // fireRagePermanentを立てることで、以降onNewBattle()でリセットされても毎戦闘怒り状態から
+  // 始まるようになる(「解放」の名の通り、以降ずっとHPに関わらず発動する永続効果として扱う)
+  fireRageUnlock:  { name: "怒りの解放", desc: "（炎専用）以降HPに関わらず怒り状態(攻撃力+2)が毎戦闘発動する", apply(p) { p.fireRagePermanent = true; p.fireRage = true; }, attribute: "fire" },
   thunderSpareCell:{ name: "予備電池",   desc: "（雷専用）チャージ上限を+2する", apply(p) { p.thunderChargeMax = (p.thunderChargeMax || 5) + 2; }, attribute: "thunder" },
   iceEcho:         { name: "氷結の残響", desc: "（氷専用）凍結準備の効果がもう1回分発動するようになる", apply(p) { p.iceEchoCharges = (p.iceEchoCharges || 0) + 1; }, attribute: "ice" },
 
