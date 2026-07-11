@@ -39,8 +39,27 @@ import {
   equipIcon,
   markEnemyDefeated,
   isEnemyDefeated,
+  applyEquipmentBonuses,
+  applyEquipmentEffectsToState,
+  initSkillCharges,
+  getOwnedEquipmentCount,
+  getAvailableEquipmentCount,
+  getPlacedEquipmentCount,
+  equipEquipmentToGrid,
+  unequipEquipmentFromGrid,
   setUICallbacks
 } from "./js/save-data.js";
+
+import {
+  EQUIPMENT_CATALOG,
+  GRID_SIZE,
+  getEquipmentCellsAt,
+  canPlaceCells,
+  getEquipmentColor,
+  getEquipmentCategory,
+  getPlacementAt,
+  generateRandomEquipmentPlacements
+} from "./js/equipment-catalog.js";
 
 import {
   QUEST_CATEGORIES,
@@ -102,6 +121,18 @@ import {
 } from "./js/audio.js";
 
 import { SKIN_CATALOG, ICON_BG_CATALOG, ICON_CATALOG } from "./js/shop-catalog.js";
+
+// ===== デバッグ用コンソールヘルパー =====
+// main.jsはtype="module"で読み込まれているため、ownEquipment等のimportした関数は
+// ブラウザのDevToolsコンソールから直接呼べない(モジュールスコープはグローバルに出ない)。
+// スキル(type:"skill")の入手導線(フェーズ3)がまだ無いテスト段階のため、window越しに呼べる
+// デバッグ関数をここに用意する。本実装(ショップ/敵撃破ドロップ等)が入ったら削除してよい。
+window.ownAllSkills = function (amount = 1) {
+  Object.keys(EQUIPMENT_CATALOG)
+    .filter(id => EQUIPMENT_CATALOG[id].type === "skill")
+    .forEach(id => ownEquipment(id, amount));
+  console.log(`スキルを${amount}個ずつ付与しました。MYメニューの装備タブ→「スキル」で確認できます。`);
+};
 
 // ===== 固定デザイン解像度(1920x1080) → 実ウィンドウへのレターボックス拡縮 =====
 const GAME_WIDTH = 1920;
@@ -401,6 +432,200 @@ function renderIconPreview() {
   preview.style.background = iconBg.css;
   previewImg.src = icon.img;
 }
+
+// ===== 装備システム：MYメニュー「装備」タブ(3×3グリッド配置UI) =====
+// ドラッグ&ドロップではなくクリック方式: 所持リストのカードをクリックして選択 → グリッドのマスをクリックして配置。
+let equipmentSelection = null; // { equipmentId } | null (回転操作はUIから廃止済み、常に基準形状のまま配置する)
+let equipmentSortMode = "rarity"; // "rarity" | "size"(所持リストの並び替え、装備タブのボタンで切り替える)
+let equipmentCategoryFilter = "attack"; // attack/hp/defense/power/special(所持リストをどの分類タブで見せるか)
+
+const EQUIPMENT_RARITY_RANK = { common: 0, rare: 1, epic: 2 };
+
+// 所持している装備のidを、現在のequipmentSortModeに応じて並び替える。
+// Array.sortは安定ソートなので、同順位内では常にEQUIPMENT_CATALOGの元の登録順(Tierの並び)が保たれる。
+function sortEquipmentIds(ids) {
+  if (equipmentSortMode === "size") {
+    return [...ids].sort((a, b) => EQUIPMENT_CATALOG[a].shape.length - EQUIPMENT_CATALOG[b].shape.length);
+  }
+  return [...ids].sort((a, b) => {
+    const rankA = EQUIPMENT_RARITY_RANK[EQUIPMENT_CATALOG[a].rarity] ?? 0;
+    const rankB = EQUIPMENT_RARITY_RANK[EQUIPMENT_CATALOG[b].rarity] ?? 0;
+    return rankA - rankB;
+  });
+}
+
+function renderEquipmentGrid() {
+  const gridEl = document.getElementById("equipment-grid");
+  if (!gridEl) return;
+  gridEl.innerHTML = "";
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      const cell = document.createElement("div");
+      cell.className = "equip-grid-cell";
+      cell.dataset.row = row;
+      cell.dataset.col = col;
+
+      const placement = getPlacementAt(saveData.equipment.placements, row, col);
+      if (placement) {
+        const eq = EQUIPMENT_CATALOG[placement.equipmentId];
+        cell.classList.add("occupied");
+        cell.dataset.placementId = placement.placementId;
+        cell.style.setProperty("--equip-cell-color", getEquipmentColor(placement.equipmentId));
+        // アンカーセル(そのplacementのcells[0])だけ名前を表示する(他のマスは色だけ)
+        if (placement.cells[0][0] === row && placement.cells[0][1] === col) {
+          cell.textContent = eq.name;
+        }
+      }
+      gridEl.appendChild(cell);
+    }
+  }
+}
+
+function equipmentCardHTML(id) {
+  const eq = EQUIPMENT_CATALOG[id];
+  const owned = getOwnedEquipmentCount(id);
+  const available = getAvailableEquipmentCount(id);
+  const color = getEquipmentColor(id);
+  const isSelected = equipmentSelection && equipmentSelection.equipmentId === id;
+  const depletedClass = available <= 0 && !isSelected ? "depleted" : "";
+  const selectedClass = isSelected ? "selected" : "";
+  return `
+    <div class="skin-card equip-owned-card ${depletedClass} ${selectedClass}" style="--equip-cell-color:${color}" data-equip-id="${id}">
+      <div class="equip-owned-name">${eq.name}</div>
+      <div class="equip-owned-desc">${eq.desc}</div>
+      <div class="equip-owned-count">${available} / ${owned} 個 配置可能</div>
+    </div>`;
+}
+
+function renderEquipmentOwnedList() {
+  const listEl = document.getElementById("equipment-owned-list");
+  if (!listEl) return;
+  const ownedIds = Object.keys(EQUIPMENT_CATALOG)
+    .filter(id => getOwnedEquipmentCount(id) > 0)
+    .filter(id => getEquipmentCategory(id) === equipmentCategoryFilter);
+
+  if (ownedIds.length === 0) {
+    listEl.innerHTML = `<div class="equip-empty-message">この分類の装備はまだ持っていません</div>`;
+    return;
+  }
+  listEl.innerHTML = sortEquipmentIds(ownedIds)
+    .map(id => equipmentCardHTML(id))
+    .join("");
+}
+
+function renderEquipmentShapePreview() {
+  const panel = document.getElementById("equipment-selection-panel");
+  if (!panel) return;
+  if (!equipmentSelection) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "block";
+
+  const eq = EQUIPMENT_CATALOG[equipmentSelection.equipmentId];
+  document.getElementById("equipment-selection-name").textContent = eq.name;
+
+  const cells = eq.shape;
+  const previewEl = document.getElementById("equipment-shape-preview");
+  previewEl.innerHTML = "";
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+      const cell = document.createElement("div");
+      cell.className = "equip-shape-preview-cell";
+      if (cells.some(([cr, cc]) => cr === r && cc === c)) cell.classList.add("filled");
+      previewEl.appendChild(cell);
+    }
+  }
+}
+
+function renderEquipmentTab() {
+  renderEquipmentGrid();
+  renderEquipmentOwnedList();
+  renderEquipmentShapePreview();
+}
+
+document.querySelectorAll(".equip-category-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    equipmentCategoryFilter = btn.dataset.category;
+    document.querySelectorAll(".equip-category-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderEquipmentOwnedList();
+  });
+});
+
+document.querySelectorAll(".equip-sort-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    equipmentSortMode = btn.dataset.sort;
+    document.querySelectorAll(".equip-sort-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderEquipmentOwnedList(); // グリッド・選択パネルは並び替えの影響を受けないので所持リストだけ再描画する
+  });
+});
+
+document.getElementById("equipment-owned-list").addEventListener("click", (e) => {
+  const card = e.target.closest(".equip-owned-card");
+  if (!card) return;
+  const id = card.dataset.equipId;
+
+  if (equipmentSelection && equipmentSelection.equipmentId === id) {
+    equipmentSelection = null; // 同じカードをもう一度押すと選択解除
+  } else {
+    if (getAvailableEquipmentCount(id) <= 0) return; // 配置できる在庫が無いカードは選択させない
+    equipmentSelection = { equipmentId: id };
+  }
+  renderEquipmentTab();
+});
+
+document.getElementById("equipment-grid").addEventListener("click", (e) => {
+  const cell = e.target.closest(".equip-grid-cell");
+  if (!cell) return;
+  const row = Number(cell.dataset.row);
+  const col = Number(cell.dataset.col);
+
+  // 配置選択モード中は、クリックしたマスが空いていても埋まっていても常に「配置を試みる」を優先する。
+  // (occupied判定を先にしてしまうと、選択中に衝突先のマスをクリックした際に「配置失敗」ではなく
+  // そこにある別の装備を誤って外してしまう事故になるため、判定順序をこの並びにしている)
+  if (equipmentSelection) {
+    const placed = equipEquipmentToGrid(equipmentSelection.equipmentId, row, col, 0);
+    if (placed) {
+      equipmentSelection = null;
+      renderEquipmentTab();
+    } else {
+      cell.classList.add("placement-flash");
+      setTimeout(() => cell.classList.remove("placement-flash"), 300);
+    }
+    return;
+  }
+
+  if (cell.classList.contains("occupied")) {
+    unequipEquipmentFromGrid(Number(cell.dataset.placementId));
+    renderEquipmentTab();
+  }
+});
+
+// 選択中の装備を空きマスにホバーすると、置ける/置けないをそのマス群に色分けプレビューする
+document.getElementById("equipment-grid").addEventListener("mouseover", (e) => {
+  if (!equipmentSelection) return;
+  const cell = e.target.closest(".equip-grid-cell");
+  if (!cell) return;
+
+  const row = Number(cell.dataset.row);
+  const col = Number(cell.dataset.col);
+  const cells = getEquipmentCellsAt(equipmentSelection.equipmentId, row, col, 0);
+  const valid = canPlaceCells(saveData.equipment.placements, cells);
+
+  document.querySelectorAll(".equip-grid-cell").forEach(c => c.classList.remove("preview-valid", "preview-invalid"));
+  cells.forEach(([r, c]) => {
+    if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) return;
+    const target = document.querySelector(`.equip-grid-cell[data-row="${r}"][data-col="${c}"]`);
+    if (target) target.classList.add(valid ? "preview-valid" : "preview-invalid");
+  });
+});
+
+document.getElementById("equipment-grid").addEventListener("mouseout", (e) => {
+  if (!e.target.closest(".equip-grid-cell")) return;
+  document.querySelectorAll(".equip-grid-cell").forEach(c => c.classList.remove("preview-valid", "preview-invalid"));
+});
 
 document.getElementById("shop-icon-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".icon-buy-btn");
@@ -1193,6 +1418,7 @@ function startStoryEnemy() {
   initAttribute(cpuState, cpuAttribute);
 
   resetBattleCounters();
+  initSkillCharges(playerState); // スキルの残り回数は「1戦闘(=1体の敵)に1回×装備枚数」なので敵ごとに再構築する
 
   // 敵ごとに戦闘背景を差し替えたい場合はenemy.backgroundを指定する(未指定ならステージ共通の背景)
   setBattleBackground(enemy.background || stage.background);
@@ -1202,6 +1428,7 @@ function startStoryEnemy() {
   document.getElementById("player-attr-icon").src = ATTR_DATA[playerAttribute].img;
   applyAttributeHudColors(playerAttribute, cpuAttribute);
   updateItemCardTab();
+  updateSkillTab();
 
   updateBattleUI();
   setupPlayerStatusWindow();
@@ -1233,6 +1460,9 @@ let itemCardChoiceLocked = false;
 // trueの間はitem-card-list選択後にenemyIndexを進めない(1戦目開始前の選択のため、
 // まだどの敵も倒していない)。btn-to-stageでtrueにし、選択完了時にfalseへ戻す。
 let awaitingInitialItemCard = false;
+
+// スキル発動中の連打対策。activateSkill()の処理中(演出・UI再描画が終わるまで)はtrueにする。
+let skillActionLocked = false;
 
 function renderItemCardChoice() {
   itemCardChoiceLocked = false;
@@ -1305,6 +1535,198 @@ document.getElementById("btn-item-card-tab").addEventListener("click", () => {
 document.getElementById("itemCardListModalClose").addEventListener("click", () => {
   document.getElementById("itemCardListModal").classList.remove("show");
 });
+
+// 戦闘中、HUDの「スキル」タブに装備中スキルの残り回数(合計)を反映する。
+// スキルを1つも装備していない場合はタブごと隠す(アイテムカードタブと同じ考え方)。
+function updateSkillTab() {
+  const tab = document.getElementById("btn-skill-tab");
+  if (!tab) return;
+  const chargeMap = playerState.skillChargesRemaining || {};
+  const skillIds = Object.keys(chargeMap);
+  if (skillIds.length === 0) {
+    tab.style.display = "none";
+    return;
+  }
+  tab.style.display = "";
+  const totalRemaining = skillIds.reduce((sum, id) => sum + chargeMap[id], 0);
+  document.getElementById("skillTabCount").textContent = totalRemaining;
+}
+
+// スキル一覧モーダルの中身を、現在装備しているスキル(playerState.skillChargesRemainingのキー)から
+// 毎回作り直す(残り回数0のものはdepletedクラスでクリック不可にする)。
+function renderSkillList() {
+  const body = document.getElementById("skillListModalBody");
+  const chargeMap = playerState.skillChargesRemaining || {};
+  const skillIds = Object.keys(chargeMap);
+
+  if (skillIds.length === 0) {
+    body.innerHTML = `<p class="item-card-list-empty">装備しているスキルがありません。</p>`;
+    return;
+  }
+
+  body.innerHTML = skillIds.map(id => {
+    const skill = EQUIPMENT_CATALOG[id];
+    const remaining = chargeMap[id];
+    const total = getPlacedEquipmentCount(id);
+    const stateClass = remaining > 0 ? "clickable" : "depleted";
+    return `
+      <div class="skin-card ${stateClass}" data-skill="${id}">
+        <div class="skin-name">${skill.name}</div>
+        <div class="skin-status">${skill.desc}</div>
+        <div class="skin-status">残り ${remaining} / ${total} 回</div>
+      </div>
+    `;
+  }).join("");
+}
+
+document.getElementById("btn-skill-tab").addEventListener("click", () => {
+  renderSkillList();
+  document.getElementById("skillListModal").classList.add("show");
+});
+
+document.getElementById("skillListModalClose").addEventListener("click", () => {
+  document.getElementById("skillListModal").classList.remove("show");
+});
+
+// スキルを実際に発動する。アイテムカードのapply(p)と同様、activate()はplayerState/cpuStateを
+// 直接ミューテートするだけの純粋関数として実装されているため、ここではその前後のhp差分から
+// ダメージ/回復の演出と勝敗判定を導く(battle.jsのbattleTurn()を経由しない、独立した処理)。
+function activateSkill(equipmentId) {
+  if (skillActionLocked) return;
+  const remaining = playerState.skillChargesRemaining && playerState.skillChargesRemaining[equipmentId];
+  if (!remaining || remaining <= 0) return;
+  skillActionLocked = true;
+
+  const skill = EQUIPMENT_CATALOG[equipmentId];
+  const beforePlayerHp = playerState.hp;
+  const beforeCpuHp = cpuState.hp;
+
+  skill.activate(playerState, cpuState);
+  playerState.skillChargesRemaining[equipmentId]--;
+
+  if (cpuState.hp < beforeCpuHp) showDamageNumber("cpu", beforeCpuHp - cpuState.hp);
+  else if (cpuState.hp > beforeCpuHp) showDamageNumber("cpu", cpuState.hp - beforeCpuHp, { heal: true });
+  if (playerState.hp < beforePlayerHp) showDamageNumber("player", beforePlayerHp - playerState.hp);
+  else if (playerState.hp > beforePlayerHp) showDamageNumber("player", playerState.hp - beforePlayerHp, { heal: true });
+
+  updateBattleUI();
+  setupPlayerStatusWindow();
+  setupCpuStatusWindow();
+
+  if (cpuState.hp <= 0) {
+    handleCpuDefeated();
+  } else if (playerState.hp <= 0) {
+    handlePlayerDefeated();
+  } else {
+    renderSkillList();
+  }
+
+  skillActionLocked = false;
+}
+
+document.getElementById("skillListModalBody").addEventListener("click", (e) => {
+  const el = e.target.closest(".skin-card.clickable");
+  if (!el) return;
+  activateSkill(el.dataset.skill);
+});
+
+// 戦闘HUDの3×3グリッド(#player-equipment-grid)自体からもスキルを発動できるようにする。
+// renderPlayerEquipmentGrid()がスキルの置かれたマスに.skill-cell/.clickable/data-skillIdを付与する。
+document.getElementById("player-equipment-grid").addEventListener("click", (e) => {
+  const cell = e.target.closest(".skill-cell.clickable");
+  if (!cell) return;
+  activateSkill(cell.dataset.skillId);
+});
+
+// 戦闘HUDの装備マスに「カーソルを合わせる(PC)」または「長押しする(タッチ)」と、
+// 装備の名前・効果を示すカスタムツールチップを表示する。プレイヤー側(#player-equipment-grid)と
+// CPU側(#cpu-equipment-grid)の両方で使うため、対象グリッド要素を引数に取る形にしている
+// (ツールチップ要素は各グリッドの子として1個ずつ、idではなくclass="equip-hud-tooltip"で持つ。
+// 同じidを持つ要素が2つ存在するのは無効なHTMLになるため、グリッドごとにquerySelectorで探す)。
+// ブラウザ標準のtitle属性は長押しに対応せずタップ操作の邪魔にもなるため使わない。
+function showEquipHudTooltip(cell, gridEl) {
+  const eq = EQUIPMENT_CATALOG[cell.dataset.equipmentId];
+  const tooltip = gridEl.querySelector(".equip-hud-tooltip");
+  if (!eq || !tooltip) return;
+
+  // 「残りN回」はプレイヤー自身のスキル所持数(playerState.skillChargesRemaining)にしか意味を持たない。
+  // CPU側の描画(renderCpuEquipmentGrid)ではスキルマスに.skill-cell/dataset.skillIdを付与しないため、
+  // この分岐は自然にプレイヤー側でだけ有効になる。
+  const descLabel = (eq.type === "skill" && cell.dataset.skillId)
+    ? `${eq.desc}(残り${(playerState.skillChargesRemaining && playerState.skillChargesRemaining[cell.dataset.equipmentId]) || 0}回)`
+    : eq.desc;
+
+  tooltip.querySelector(".equip-hud-tooltip-name").textContent = eq.name;
+  tooltip.querySelector(".equip-hud-tooltip-desc").textContent = descLabel;
+  // offsetLeft/offsetTopは#game-canvasのCSS transform:scale()の影響を受けない
+  // (親要素基準のレイアウト座標のため)、スケール計算なしでそのまま使える。
+  tooltip.style.left = `${cell.offsetLeft}px`;
+  tooltip.style.top = `${cell.offsetTop}px`;
+  tooltip.classList.add("visible");
+}
+
+function hideEquipHudTooltip(gridEl) {
+  gridEl.querySelector(".equip-hud-tooltip")?.classList.remove("visible");
+}
+
+// ホバー(mouseover/mouseout委譲)・タッチ長押し(500ms)のイベント登録をグリッド単位で行う。
+// プレイヤー側・CPU側それぞれのグリッド要素に対して1回ずつ呼ぶ(renderPlayerEquipmentGrid()/
+// renderCpuEquipmentGrid()の初回描画後、main.js末尾でまとめて初期化する)。
+function setupEquipHudTooltipBehavior(gridEl) {
+  if (!gridEl) return;
+
+  // mouseenter/mouseleaveはバブリングしないため、委譲するにはmouseover/mouseoutを使い、
+  // 同じマス内の子要素(名前テキスト等)間の移動では消えないようrelatedTargetを見て判定する。
+  gridEl.addEventListener("mouseover", (e) => {
+    const cell = e.target.closest(".equip-grid-mini-cell.occupied");
+    if (!cell || cell.contains(e.relatedTarget)) return;
+    showEquipHudTooltip(cell, gridEl);
+  });
+
+  gridEl.addEventListener("mouseout", (e) => {
+    const cell = e.target.closest(".equip-grid-mini-cell.occupied");
+    if (!cell || cell.contains(e.relatedTarget)) return;
+    hideEquipHudTooltip(gridEl);
+  });
+
+  // タッチ端末向けの長押し(500ms)判定。指を動かした/離した場合はタイマーを取り消す。
+  let longPressTimer = null;
+  let longPressFired = false;
+
+  gridEl.addEventListener("touchstart", (e) => {
+    const cell = e.target.closest(".equip-grid-mini-cell.occupied");
+    if (!cell) return;
+    longPressFired = false;
+    clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+      showEquipHudTooltip(cell, gridEl);
+    }, 500);
+  });
+
+  gridEl.addEventListener("touchend", (e) => {
+    clearTimeout(longPressTimer);
+    if (longPressFired) {
+      // 長押しでツールチップを出した場合、直後に発火する合成clickでスキルが誤発動しないように抑止する
+      e.preventDefault();
+      hideEquipHudTooltip(gridEl);
+    }
+    longPressFired = false;
+  });
+
+  gridEl.addEventListener("touchmove", () => {
+    clearTimeout(longPressTimer);
+  });
+
+  gridEl.addEventListener("touchcancel", () => {
+    clearTimeout(longPressTimer);
+    hideEquipHudTooltip(gridEl);
+    longPressFired = false;
+  });
+}
+
+setupEquipHudTooltipBehavior(document.getElementById("player-equipment-grid"));
+setupEquipHudTooltipBehavior(document.getElementById("cpu-equipment-grid"));
 
 document.getElementById("item-card-list").addEventListener("click", (e) => {
   const el = e.target.closest(".item-card-option");
@@ -1468,10 +1890,90 @@ function renderStatusWindow(win, attribute, state) {
 
 function setupPlayerStatusWindow() {
   renderStatusWindow(document.getElementById("player-status-window"), playerAttribute, playerState);
+  renderPlayerEquipmentGrid();
+}
+
+// 装備は戦闘中に変化しない(applyEquipmentBonuses()/applyEquipmentEffectsToState()が戦闘開始時に
+// 一度だけ反映する)ため、setupPlayerStatusWindow()/setupCpuStatusWindow()と同じタイミングで
+// 呼べば十分(呼び出し箇所を新たに増やす必要が無い)。
+// プレイヤー側(#player-equipment-grid)・CPU側(#cpu-equipment-grid)の両方で共通のロジックを使うため、
+// 描画本体はgridEl/placements/interactiveを受け取る汎用関数にしてある
+// (MYメニューのgetPlacementAt()/renderEquipmentGrid()(装備タブ)とも同じ考え方の縮小版)。
+// interactive=trueの時だけスキルマスをクリック可能なボタンにする(CPU側は常にfalse＝情報表示専用。
+// 敵の残りスキル回数は同期していない/追跡していないため、押せるようにしても意味を持たせられない)。
+function renderEquipmentMiniGrid(gridEl, placements, { interactive }) {
+  if (!gridEl) return;
+
+  gridEl.style.display = placements.length ? "grid" : "none";
+  gridEl.innerHTML = "";
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      const cell = document.createElement("div");
+      cell.className = "equip-grid-mini-cell";
+
+      const placement = getPlacementAt(placements, row, col);
+      if (placement) {
+        const eq = EQUIPMENT_CATALOG[placement.equipmentId];
+        cell.classList.add("occupied");
+        cell.style.setProperty("--equip-cell-color", getEquipmentColor(placement.equipmentId));
+        // 配置の形の全マスにIDを持たせておく(どのマスにカーソルを合わせても/長押ししても
+        // ツールチップが出せるようにするため。表示テキスト用ではなく、あくまでイベント委譲用)。
+        cell.dataset.equipmentId = placement.equipmentId;
+
+        // マスが小さく全マスに文字を出すと煩雑なので、配置の基準マス(左上)にだけ名前を表示する
+        if (placement.cells[0][0] === row && placement.cells[0][1] === col) {
+          const nameEl = document.createElement("div");
+          nameEl.className = "equip-grid-mini-cell-name";
+          nameEl.textContent = eq.name;
+          cell.appendChild(nameEl);
+        }
+
+        if (interactive && eq.type === "skill") {
+          // スキルが置かれたマスはボタンとして押せるようにする(main.js末尾の委譲クリックリスナー参照)。
+          // 同じスキルを複数マス配置していても残り回数はequipmentId単位で共有なので、
+          // どのマスをクリックしても同じactivateSkill(equipmentId)を呼ぶ。
+          const remaining = (playerState.skillChargesRemaining && playerState.skillChargesRemaining[placement.equipmentId]) || 0;
+          cell.classList.add("skill-cell", remaining > 0 ? "clickable" : "depleted");
+          cell.dataset.skillId = placement.equipmentId;
+          // 基準マスにだけ残り回数バッジを重ねる(名前テキストと共存させるため右上固定の別要素にしている)
+          if (placement.cells[0][0] === row && placement.cells[0][1] === col) {
+            const badgeEl = document.createElement("div");
+            badgeEl.className = "equip-grid-mini-cell-charge-badge";
+            badgeEl.textContent = remaining;
+            cell.appendChild(badgeEl);
+          }
+        }
+        // ブラウザ標準のtitle属性(ホバー時ツールチップ)は使わない。カスタムツールチップ
+        // (.equip-hud-tooltip、setupEquipHudTooltipBehavior()参照)に置き換えたため。
+      }
+      gridEl.appendChild(cell);
+    }
+  }
+
+  // カスタムツールチップ要素はgridEl.innerHTML=""でクリアされるため、描画のたびに作り直す。
+  // display:gridのgridElに追加してもposition:absoluteなのでグリッドの自動配置には参加しない。
+  // idではなくclassにしているのは、プレイヤー側/CPU側の2グリッド分を同時にDOMへ持つため
+  // (同じidを持つ要素が2つ存在するのは無効なHTMLになる)。
+  const tooltipEl = document.createElement("div");
+  tooltipEl.className = "equip-hud-tooltip";
+  tooltipEl.innerHTML = `<div class="equip-hud-tooltip-name"></div><div class="equip-hud-tooltip-desc"></div>`;
+  gridEl.appendChild(tooltipEl);
+}
+
+function renderPlayerEquipmentGrid() {
+  renderEquipmentMiniGrid(document.getElementById("player-equipment-grid"), saveData.equipment.placements, { interactive: true });
+}
+
+// CPU戦はbeginVersusBattle()でランダム生成した装備、オンライン対戦は相手から同期された装備を
+// cpuState.equipmentPlacementsに保持している(saveDataを経由しないため、cpuStateに直接生やす設計)。
+// ストーリーモードでは今のところcpuState.equipmentPlacementsが設定されないため、何も表示されない。
+function renderCpuEquipmentGrid() {
+  renderEquipmentMiniGrid(document.getElementById("cpu-equipment-grid"), cpuState.equipmentPlacements || [], { interactive: false });
 }
 
 function setupCpuStatusWindow() {
   renderStatusWindow(document.getElementById("cpu-status-window"), cpuAttribute, cpuState);
+  renderCpuEquipmentGrid();
 }
 
 // CPUの性格（手の出し方の傾向）
@@ -1587,6 +2089,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderMyMenuIconList();
   renderMyMenuIconBgList();
   renderIconPreview();
+  renderEquipmentTab();
   showScreen("screen-mymenu");
 });
 
@@ -1870,6 +2373,8 @@ document.getElementById("btn-to-stage").addEventListener("click", () => {
     maxPower: ATTR_BASE_STATUS[playerAttribute].maxPower
   };
   initAttribute(playerState, playerAttribute);
+  applyEquipmentBonuses(playerState);
+  initSkillCharges(playerState);
 
   // 1戦目が始まる前にもアイテムカードを1枚選ばせる(以降の「敵撃破後」の選択と同じ画面を流用)。
   // BGMの切り替え(bgmMode停止→bgm選択)はitem-card-listの選択完了時にまとめて行う。
@@ -1926,7 +2431,9 @@ if (btnCpuAttrConfirmBack) {
 }
 
 // CPU戦・オンライン対戦共通の「戦闘準備」処理。オンラインではattributeが確定した後(battleStart受信時)に呼ぶ
-function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
+// opponentEquipmentPlacements: CPU戦では省略(このあと下でランダム生成する)、オンライン対戦では
+// サーバーから同期された相手の実際の装備構成(js/online.jsのbattleStartハンドラ経由)を渡す。
+function beginVersusBattle(mode, opponentAttribute, enemyImgPath, opponentEquipmentPlacements = null) {
   battleContext.mode = mode;
 
   // 前回オンライン対戦で使ったシード付き乱数が残っていると、CPU戦でもbattleRandom()が
@@ -1959,7 +2466,18 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
   };
 
   initAttribute(playerState, playerAttribute);
+  applyEquipmentBonuses(playerState);
+  initSkillCharges(playerState);
   initAttribute(cpuState, cpuAttribute);
+
+  // 敵の装備：CPU戦はその場でランダム生成、オンライン対戦は同期された相手の実際の構成を使う。
+  // ストーリーモードはstartStoryEnemy()を経由するため、ここには来ない(今回はスコープ外)。
+  const cpuEquipmentPlacements = mode === "cpu"
+    ? generateRandomEquipmentPlacements()
+    : (opponentEquipmentPlacements || []);
+  applyEquipmentEffectsToState(cpuState, cpuEquipmentPlacements);
+  // saveDataを経由しないため、HUD描画(renderCpuEquipmentGrid())用にcpuState自身へ持たせておく。
+  cpuState.equipmentPlacements = cpuEquipmentPlacements;
 
   resetBattleCounters();
 
@@ -1994,6 +2512,7 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
     ATTR_DATA[cpuAttribute].img;
     applyAttributeHudColors(playerAttribute, cpuAttribute);
     updateItemCardTab(); // CPU戦/オンラインにはカードが無いため、ここでタブを隠す
+    updateSkillTab();
 
     // ⑤ 戦闘画面が表示された瞬間に黒帯を開く
     setTimeout(() => {
@@ -2015,8 +2534,8 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath) {
 
 document.getElementById("btn-cpu-attr-confirm-next").addEventListener("click", () => {
   if (battleContext.mode === "online") {
-    // オンライン対戦：自分の属性をサーバーに送り、相手の選択を待つ(battleStart受信でbeginVersusBattleが呼ばれる)
-    connectOnlineSocket().emit("chooseAttribute", { attribute: playerAttribute });
+    // オンライン対戦：自分の属性と装備構成をサーバーに送り、相手の選択を待つ(battleStart受信でbeginVersusBattleが呼ばれる)
+    connectOnlineSocket().emit("chooseAttribute", { attribute: playerAttribute, equipmentPlacements: saveData.equipment.placements });
     showOnlineWaiting("相手の属性選択を待っています…");
     return;
   }
@@ -2077,6 +2596,7 @@ if (btnResetCoinsQuests) {
       renderMyMenuIconList();
       renderMyMenuIconBgList();
       renderIconPreview();
+      renderEquipmentTab();
     });
   });
 }

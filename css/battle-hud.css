@@ -17,12 +17,18 @@
   bottom: 24px;
 }
 
-/* ストーリーモードで取得したアイテムカードを確認するタブ。.player-hud(position:absolute)を
-   基準に、HPバー等を含むパネル本体の上端からさらに上に張り出す形で表示する */
-.hud-card-tab {
+/* ストーリーモードで取得したアイテムカード/装備したスキルを確認するタブの行。
+   .player-hud(position:absolute)を基準に、HPバー等を含むパネル本体の上端からさらに上に張り出す */
+.hud-tab-row {
   position: absolute;
   top: -42px;
   left: 0;
+  display: flex;
+  gap: 8px;
+  z-index: var(--z-hud-panel);
+}
+
+.hud-card-tab {
   padding: 11px 22px;
   background: rgba(0, 0, 0, 0.65);
   border: none;
@@ -32,7 +38,6 @@
   font-size: 19px;
   cursor: pointer;
   transition: 0.2s;
-  z-index: var(--z-hud-panel);
 }
 
 .hud-card-tab:hover {
@@ -143,6 +148,124 @@
 
 .status-row:last-child {
   margin-bottom: 0;
+}
+
+/* 装備システム：MYメニューの3×3配置グリッド(.equip-grid)と同じ考え方の縮小版を戦闘HUDに表示する。
+   中身が無い時はrenderPlayerEquipmentGrid()がdisplay:noneにするため、空の余白は出ない。
+   2026-07-11: 「マスが小さくて見づらい/名前が見えない」との指摘を受け、34px→64pxに拡大し
+   マス自体に装備名を常時表示する形に変更(以前はホバー時のブラウザ標準title属性頼りだった)。
+   positionをrelativeにしているのは、下の#equip-hud-tooltip(カスタムツールチップ)を
+   このグリッド基準で絶対配置するため。 */
+.equip-grid-mini {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  grid-template-rows: repeat(3, 64px);
+  gap: 6px;
+  position: relative;
+}
+
+.equip-grid-mini-cell {
+  width: 64px;
+  height: 64px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  overflow: hidden;
+}
+
+.equip-grid-mini-cell.occupied {
+  background: var(--equip-cell-color, #9aa5b1);
+  border-color: rgba(255,255,255,0.6);
+}
+
+/* マスの基準セル(配置の左上)にだけ入る装備名。他のマスは色だけで名前は入れない(繰り返し表示を避ける) */
+.equip-grid-mini-cell-name {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.85);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* スキル(type:"skill")が置かれたマスは押して発動できるボタンになる。
+   活性化(clickable)/枯渇(depleted)はrenderPlayerEquipmentGrid()(main.js)が残り回数を見て切り替える */
+.equip-grid-mini-cell.skill-cell.clickable {
+  cursor: pointer;
+  transition: transform 0.15s, filter 0.15s;
+}
+
+.equip-grid-mini-cell.skill-cell.clickable:hover {
+  transform: scale(1.08);
+  filter: brightness(1.25);
+  border-color: #fff;
+}
+
+.equip-grid-mini-cell.skill-cell.depleted {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* スキルマスの残り回数バッジ(右上の小さな数字)。名前テキストと共存させるため、
+   セル全体の文字ではなく右上に固定表示する専用要素にしている */
+.equip-grid-mini-cell-charge-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+}
+
+/* カーソルを合わせる(mouseover/mouseout委譲)か、タッチ長押し(500ms)で表示するカスタムツールチップ。
+   ブラウザ標準title属性は長押しに対応しない(タップ操作を阻害もする)ため、これに置き換えた。
+   .equip-grid-mini-cell自身に子要素として置かれるのではなく、グリッド共通の1個をrenderPlayerEquipmentGrid()の
+   たびに作り直し、ホバー/長押しされたセルの位置(offsetLeft/offsetTop)へ都度動かす方式にしている。 */
+.equip-hud-tooltip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translateY(-100%) translateY(-8px);
+  min-width: 150px;
+  max-width: 240px;
+  background: rgba(10, 10, 24, 0.96);
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 60;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+}
+
+.equip-hud-tooltip.visible {
+  opacity: 1;
+}
+
+.equip-hud-tooltip-name {
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 3px;
+}
+
+.equip-hud-tooltip-desc {
+  font-size: 13px;
+  color: rgba(255,255,255,0.9);
+  line-height: 1.4;
 }
 
 /* 結果テキスト */

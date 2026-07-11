@@ -124,6 +124,7 @@
     <div class="mymenu-tab-nav">
       <button class="mymenu-tab-btn active" data-tab-target="equip-tab">カードスキン</button>
       <button class="mymenu-tab-btn" data-tab-target="icon-tab">アイコン</button>
+      <button class="mymenu-tab-btn" data-tab-target="equipment-tab">装備</button>
       <button class="mymenu-tab-btn" data-tab-target="settings-tab">設定</button>
     </div>
 
@@ -150,6 +151,35 @@
 
           <h3>アイコン背景</h3>
           <div id="mymenu-iconbg-list" class="skin-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="equipment-tab" class="settings-tab mymenu-tab-panel">
+      <h2>装備</h2>
+      <div class="icon-tab-layout">
+        <div class="icon-preview-col">
+          <div id="equipment-grid" class="equip-grid"></div>
+          <div id="equipment-selection-panel" class="equip-selection-panel" style="display:none;">
+            <div id="equipment-selection-name" class="equip-selection-name"></div>
+            <div id="equipment-shape-preview" class="equip-shape-preview"></div>
+          </div>
+        </div>
+        <div class="icon-list-col">
+          <h3>所持している装備</h3>
+          <div id="equipment-category-tabs" class="equip-category-tabs">
+            <button type="button" class="equip-category-btn active" data-category="attack">攻撃力系</button>
+            <button type="button" class="equip-category-btn" data-category="hp">体力系</button>
+            <button type="button" class="equip-category-btn" data-category="defense">防御系</button>
+            <button type="button" class="equip-category-btn" data-category="power">パワー系</button>
+            <button type="button" class="equip-category-btn" data-category="special">特殊効果系</button>
+            <button type="button" class="equip-category-btn" data-category="skill">スキル</button>
+          </div>
+          <div class="equip-sort-toggle">
+            <button type="button" class="equip-sort-btn active" data-sort="rarity">レアリティ順</button>
+            <button type="button" class="equip-sort-btn" data-sort="size">マスの大きさ順</button>
+          </div>
+          <div id="equipment-owned-list" class="skin-list"></div>
         </div>
       </div>
     </div>
@@ -525,16 +555,28 @@
     <div id="cpu-status-window" class="status-window">
       <!-- JSで中身を入れる -->
     </div>
+    <!-- プレイヤー側(#player-equipment-grid)と対称な敵側の装備グリッド(main.jsのrenderCpuEquipmentGrid()が中身を入れる)。
+         CPU戦はランダム生成、オンライン対戦は相手の実際の装備構成を同期して表示する(ストーリーモードは未対応)。
+         常に情報表示専用(クリックでの発動はできない)。 -->
+    <div id="cpu-equipment-grid" class="equip-grid-mini"></div>
   </div>
 
   <!-- 左下：プレイヤー HUD（属性アイコン＋HP/パワー＋属性固有ステータス） -->
   <div class="hud-panel player-hud">
-    <!-- ストーリーモードでそのランで取得したアイテムカードを確認するタブ。
-         CPU戦/オンライン対戦ではアイテムカードが存在しないため、updateItemCardTab()(main.js)が
-         battleContext.mode==="story"の時だけ表示する -->
-    <button id="btn-item-card-tab" class="hud-card-tab" style="display:none;">
-      🎴 カード <span id="itemCardTabCount">0</span>
-    </button>
+    <!-- .player-hud(position:absolute)の上端からさらに上に張り出すタブ類をまとめて横並びにする行 -->
+    <div class="hud-tab-row">
+      <!-- ストーリーモードでそのランで取得したアイテムカードを確認するタブ。
+           CPU戦/オンライン対戦ではアイテムカードが存在しないため、updateItemCardTab()(main.js)が
+           battleContext.mode==="story"の時だけ表示する -->
+      <button id="btn-item-card-tab" class="hud-card-tab" style="display:none;">
+        🎴 カード <span id="itemCardTabCount">0</span>
+      </button>
+      <!-- 装備したスキル(type:"skill")を発動するタブ。スキルを1つも装備していない場合は
+           updateSkillTab()(main.js)が非表示にする -->
+      <button id="btn-skill-tab" class="hud-card-tab" style="display:none;">
+        ✨ スキル <span id="skillTabCount">0</span>
+      </button>
+    </div>
     <div id="playerDamageNumberLayer"></div>
     <div class="hud-top">
       <div class="player-attr-box">
@@ -549,6 +591,11 @@
     <div id="player-status-window" class="status-window">
       <!-- JSで中身を入れる -->
     </div>
+    <!-- 装備システムのMYメニュー画面と同じ3×3グリッドを縮小表示(main.jsのrenderPlayerEquipmentGrid()が中身を入れる)。
+         マス自体に名前を表示し、効果はホバー/長押しのカスタムツールチップ(#equip-hud-tooltip)で見せるため、
+         以前あった下段のテキスト一覧(#player-equipment-legend)は2026-07-11に廃止した。
+         装備はプレイヤー側にのみ適用されるため、CPU HUDには対応する要素を置いていない -->
+    <div id="player-equipment-grid" class="equip-grid-mini"></div>
   </div>
 
   <!-- 下中央：手札カード（グー・チョキ・パーの並び） -->
@@ -638,6 +685,17 @@
      <div id="itemCardListModalBody" class="skin-list item-card-list-body"></div>
      <div class="confirm-buttons">
        <button id="itemCardListModalClose" class="secondary-btn">閉じる</button>
+     </div>
+   </div>
+ </div>
+
+ <!-- 装備したスキル一覧モーダル（戦闘中、HUDの「スキル」タブから開く。クリックで即発動） -->
+ <div id="skillListModal" class="confirm-modal">
+   <div class="confirm-box item-card-list-box">
+     <div class="confirm-message">スキル</div>
+     <div id="skillListModalBody" class="skin-list item-card-list-body"></div>
+     <div class="confirm-buttons">
+       <button id="skillListModalClose" class="secondary-btn">閉じる</button>
      </div>
    </div>
  </div>

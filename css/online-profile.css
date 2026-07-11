@@ -337,14 +337,43 @@
 }
 
 
+/* MYメニューの画面タイトル。以前はブラウザデフォルトのh1のまま無装飾だった */
+.mymenu-title {
+  margin: 0;
+  text-align: center;
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(120, 150, 255, 0.7), 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
 .settings-tab {
-  padding: 27px;
-  background: rgba(0,0,0,0.6);
-  border-radius: 12px;
+  padding: 32px;
+  background: linear-gradient(165deg, rgba(90, 110, 200, 0.18), rgba(10, 10, 30, 0.55));
+  border: 1px solid rgba(140, 160, 255, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.4);
   color: #fff;
   width: 90%;
   margin: 0 auto;
   margin-top: 20px;
+}
+
+.settings-tab h2 {
+  margin: 0 0 20px;
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  padding-left: 16px;
+  border-left: 5px solid var(--accent-gold, #ffd24d);
+}
+
+.settings-tab h3 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 
@@ -386,6 +415,25 @@
   color: #222;
 }
 
+/* MYメニューのタブだけを対象にした上書き(.shop-tab-btnには影響しない、詳細度は同じだが
+   ソース順で後に書かれているためこちらが勝つ)。非アクティブ時も枠と影で存在感を持たせ、
+   アクティブ時はグロー影を足して「今どのタブを見ているか」をより分かりやすくする */
+.mymenu-tab-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.mymenu-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.mymenu-tab-btn.active {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 16px rgba(255, 210, 77, 0.6);
+}
+
 .mymenu-tab-panel,
 .shop-tab-panel {
   display: none;
@@ -412,6 +460,8 @@
   display: block;
   margin-bottom: 8px;
   font-size: 27px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 #bgm-volume,
@@ -432,8 +482,8 @@
   font-size: 20px;
   font-weight: 700;
   color: #fff;
-  background: rgba(255,255,255,0.1);
-  border: none;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   cursor: pointer;
   transition: 0.2s;
@@ -448,8 +498,75 @@
   color: #222;
 }
 
-/* MYメニュー・ショップ・クエストを前面に出して中身を見えるようにする */
-#screen-mymenu,
+/* 装備タブの所持リスト並び替えトグル(hand-input-mode-btnと同じ見た目のミニ版) */
+.equip-sort-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.equip-sort-btn {
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.equip-sort-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.equip-sort-btn.active {
+  background: var(--accent-gold, #ffd24d);
+  color: #222;
+}
+
+/* 装備タブの分類タブ(攻撃力系/体力系/防御系/パワー系/特殊効果系)。
+   下の並び替えトグル(ゴールド)と見分けがつくよう、こちらは青系のアクセントにしている。 */
+.equip-category-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.equip-category-btn {
+  padding: 8px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.equip-category-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.equip-category-btn.active {
+  background: #4f7dff;
+  border-color: #7fa2ff;
+  box-shadow: 0 0 12px rgba(79, 125, 255, 0.6);
+  color: #fff;
+}
+
+.equip-empty-message {
+  padding: 30px 10px;
+  text-align: center;
+  color: rgba(255,255,255,0.6);
+  font-size: 15px;
+}
+
+/* ショップ・クエスト等を前面に出して中身を見えるようにする(MYメニューは専用背景を下で別途定義) */
 #screen-shop,
 #screen-quest,
 #screen-stage-select,
@@ -461,6 +578,20 @@
   color: #fff;
   padding-top: 54px;
   box-sizing: border-box;
+}
+
+/* MYメニュー：アイテムカード獲得画面と同じ「ガチャ演出風の専用背景」パターンだが、
+   紫(獲得画面)と混同しないようインディゴ/ブルー系の色相にしている */
+#screen-mymenu {
+  position: relative;
+  z-index: 10;
+  background:
+    radial-gradient(circle at 50% 10%, rgba(70, 110, 255, 0.3), transparent 55%),
+    linear-gradient(180deg, #0b1030, #05050f 70%);
+  color: #fff;
+  padding-top: 54px;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* アイテムカード獲得画面：ガチャ演出風に他の設定系画面とは違う専用の背景を持たせる */
@@ -501,10 +632,19 @@
 .skin-card {
   width: 220px;
   padding: 22px;
-  background: rgba(255,255,255,0.08);
+  background: linear-gradient(160deg, rgba(90, 60, 180, 0.35), rgba(20, 12, 50, 0.65));
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 14px;
   text-align: center;
   box-shadow: 0 0 15px rgba(0,0,0,0.4);
+  box-sizing: border-box;
+  transition: transform 0.2s, filter 0.2s, border-color 0.2s;
+}
+
+.skin-card:hover {
+  transform: translateY(-4px);
+  filter: brightness(1.12);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .skin-card img {
@@ -520,6 +660,7 @@
   height: 108px;
   border-radius: 50%;
   margin: 0 auto 8px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
 }
 
@@ -545,7 +686,8 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  box-shadow: 0 0 16px rgba(0, 0, 0, 0.5);
+  border: 3px solid rgba(255, 210, 77, 0.7);
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 210, 77, 0.4);
 }
 
 .icon-preview-img {
@@ -559,7 +701,8 @@
 .icon-list-col {
   flex: 1 1 auto;
   min-width: 0;
-  max-height: 480px;
+  max-height: 640px; /* 480pxだと「アイコン背景」の3列目まで含めた実際の中身(約622px)が収まらず
+                         スクロールが必要だった。画面下にはまだ余裕があるため広げて一目で見えるようにする */
   overflow-y: auto;
   padding-right: 11px;
 }
@@ -595,5 +738,16 @@
 .skin-card.clickable:hover {
   transform: translateY(-4px);
   filter: brightness(1.15);
+}
+
+/* スキル発動リスト：残り回数0のカード(main.jsのrenderSkillList()参照) */
+.skin-card.depleted {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.skin-card.depleted:hover {
+  transform: none;
+  filter: none;
 }
 

@@ -9,6 +9,7 @@ import {
   canUsePower,
   initAttribute,
   applyPoison,
+  addCurseStacks,
   tickPoison,
   tickGamblerKakuhen,
   setBattleRandom
@@ -68,6 +69,67 @@ test("汎用アイテムカード追加5種: 連勝の証/双刃の型/収集家
 
   const collector = freshState("thunder", { itemCollectorAtkBonus: 4 });
   assert.equal(attributeBonus(collector, 1, "thunder"), 4);
+});
+
+test("装備システム: equipAtkBonus/equipDefReductionはアイテムカードのgeneric系とは別枠でattributeBonus/damageReductionに反映される", () => {
+  const atk = freshState("thunder", { equipAtkBonus: 2 });
+  assert.equal(attributeBonus(atk, 1, "thunder"), 2, "手の種類に関わらず乗るはず");
+
+  const def = freshState("thunder", { equipDefReduction: 3 });
+  assert.equal(damageReduction(def, "thunder"), 3);
+
+  const both = freshState("thunder", { genericAtkBonus: 1, equipAtkBonus: 2 });
+  assert.equal(attributeBonus(both, 1, "thunder"), 3, "アイテムカードのgenericAtkBonusと加算されるはず(競合しない)");
+});
+
+test("装備システム: equipRockBonus/equipScissorsBonus/equipPaperBonusは対応する手にしか乗らない", () => {
+  const state = freshState("thunder", { equipRockBonus: 1, equipScissorsBonus: 2, equipPaperBonus: 3 });
+  assert.equal(attributeBonus(state, 0, "thunder"), 1, "グーにequipRockBonusが乗っていない");
+  assert.equal(attributeBonus(state, 2, "thunder"), 2, "チョキにequipScissorsBonusが乗っていない");
+  assert.equal(attributeBonus(state, 1, "thunder"), 3, "パーにequipPaperBonusが乗っていない");
+});
+
+test("装備システム: equipLowHpDefBonus(守護の光)はHPが最大の20%以下の時だけ被ダメージ軽減に乗る", () => {
+  const lowHp = freshState("thunder", { equipLowHpDefBonus: 2, hp: 5, maxHp: 25 }); // 20%
+  assert.equal(damageReduction(lowHp, "thunder"), 2);
+
+  const highHp = freshState("thunder", { equipLowHpDefBonus: 2, hp: 6, maxHp: 25 }); // 24% > 20%
+  assert.equal(damageReduction(highHp, "thunder"), 0);
+});
+
+test("装備システム: equipExecuteBonus(終焉の刃)は相手のHPが20%以下の時だけ攻撃力に乗る", () => {
+  const attacker = freshState("thunder", { equipExecuteBonus: 3 });
+  const lowHpDefender = freshState("thunder", { hp: 5, maxHp: 25 }); // 20%
+  const highHpDefender = freshState("thunder", { hp: 20, maxHp: 25 });
+
+  assert.equal(attributeBonus(attacker, 1, "thunder", false, lowHpDefender), 3);
+  assert.equal(attributeBonus(attacker, 1, "thunder", false, highHpDefender), 0);
+  assert.equal(attributeBonus(attacker, 1, "thunder", false, undefined), 0, "defenderStateが無い呼び出し(previewAttackDamage等)でも例外にならないはず");
+});
+
+test("装備システム: equipWinStreakBonus(闘志の紋章)はequipWinStreakCountが1以上の時だけ乗る", () => {
+  const streaking = freshState("thunder", { equipWinStreakBonus: 1, equipWinStreakCount: 3 });
+  assert.equal(attributeBonus(streaking, 1, "thunder"), 1);
+
+  const notStreaking = freshState("thunder", { equipWinStreakBonus: 1, equipWinStreakCount: 0 });
+  assert.equal(attributeBonus(notStreaking, 1, "thunder"), 0);
+});
+
+test("装備システム: applyPoison/addCurseStacksはequipStatusResistRate(静寂の仮面)持ちの防御側への付与量を半減する(切り上げ、最低1)", () => {
+  const resistantDefender = freshState("thunder", { equipStatusResistRate: 1 });
+  applyPoison(resistantDefender, 4);
+  assert.equal(resistantDefender.poisonDamage, 2, "毒4スタックが半減されて2になっていない");
+
+  addCurseStacks(resistantDefender, 3);
+  assert.equal(resistantDefender.curseStacks, 2, "呪い3スタックが切り上げ半減されて2になっていない(3/2=1.5→切り上げ2)");
+
+  const resistantDefenderMin = freshState("thunder", { equipStatusResistRate: 1 });
+  applyPoison(resistantDefenderMin, 1);
+  assert.equal(resistantDefenderMin.poisonDamage, 1, "半減の結果が0になってはいけない(最低1)");
+
+  const normalDefender = freshState("thunder");
+  applyPoison(normalDefender, 4);
+  assert.equal(normalDefender.poisonDamage, 4, "耐性が無ければ半減されないはず");
 });
 
 test("炎: fireItemAtkBonus(アイテムカード「業火の種」の永続分)もグー限定でfireAtkBonusと合算される", () => {

@@ -1,7 +1,7 @@
 // js/battle.js(battleTurn)の回帰テスト。分割前のmain.js内の挙動と一致することを保証する。
 import "./helpers/localstorage-polyfill.js"; // save-data.jsの読み込みより先にlocalStorageを用意する
 import { test, assert, summarize } from "./helpers/test-runner.js";
-import { initAttribute } from "../js/attributes.js";
+import { initAttribute, setBattleRandom } from "../js/attributes.js";
 import { saveData } from "../js/save-data.js";
 import { getQuestProgress } from "../js/quests.js";
 import { battleTurn, resetBattleCounters, setBattleCallbacks } from "../js/battle.js";
@@ -462,6 +462,138 @@ test("棘の鎧: 被ダメージの20%(切り捨て)を相手に反射する", (
   // プレイヤーがチョキ(2)、cpuがパワー消費グー(0)でプレイヤーに勝つ→cpudamage=7(基礎)、floor(7*0.2)=1反射
   battleTurn(2, 0, player, cpu, "thunder", "thunder");
   assert.equal(cpu.hp, 25 - 1);
+});
+
+// ===== 装備87種のうち、battle.js側のフックが必要な特殊枠(15種)の回帰テスト =====
+
+test("装備「猛毒の牙」: 勝利時、確率(battleRandom)が閾値未満なら相手に毒1スタックを付与する", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { equipPoisonOnWinChance: 0.5 });
+  const cpu = freshState("thunder");
+  setBattleRandom(() => 0); // 0 < 0.5 なので必ず発動する
+  battleTurn(0, 2, player, cpu, "thunder", "thunder"); // グーがチョキに勝つ
+  setBattleRandom(Math.random);
+  assert.equal(cpu.poisonDamage, 1);
+  assert.equal(cpu.poisonTurnsLeft, 2, "付与直後に同ターンのtickPoisonで1消費されているはず");
+});
+
+test("装備「氷結の指輪」: 勝利時、確率が閾値未満なら相手のfreezeReadyを立てる", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { equipFreezeChanceOnWin: 0.5 });
+  const cpu = freshState("thunder");
+  setBattleRandom(() => 0);
+  battleTurn(0, 2, player, cpu, "thunder", "thunder");
+  setBattleRandom(Math.random);
+  assert.equal(cpu.freezeReady, true);
+});
+
+test("装備「生命奪取の剣」: 勝利ダメージの割合を自分のHPに還元する", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { hp: 20, maxHp: 25, equipLifestealRate: 0.5 });
+  const cpu = freshState("thunder");
+  battleTurn(2, 1, player, cpu, "thunder", "thunder"); // チョキ(固定4ダメージ)がパーに勝つ→floor(4*0.5)=2回復
+  assert.equal(player.hp, 22);
+});
+
+test("装備「悪食の顎」: グー勝利時、相手のパワーを1奪う", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { power: 0, maxPower: 5, equipPowerStealOnWin: 1 });
+  const cpu = freshState("thunder", { power: 3, maxPower: 5 });
+  battleTurn(0, 2, player, cpu, "thunder", "thunder"); // グーがチョキに勝つ
+  assert.equal(cpu.power, 2);
+  assert.equal(player.power, 1);
+});
+
+test("装備「執念の目」: HPが1の時、1戦闘に1回だけ被ダメージを完全無効化する", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { hp: 1, equipDeathDefianceCharges: 1 });
+  const cpu = freshState("thunder");
+  battleTurn(0, 1, player, cpu, "thunder", "thunder"); // グーがパーに負ける
+  assert.equal(player.hp, 1, "ダメージが完全無効化されHP1のままのはず");
+  assert.equal(player.equipDeathDefianceCharges, 0);
+  assert.equal(callsTo("handlePlayerDefeated").length, 0);
+});
+
+test("装備「反撃の棘」: 被弾時、確率が閾値未満なら相手に1ダメージ反射する", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { equipReflectChance: 0.5 });
+  const cpu = freshState("thunder", { hp: 25 });
+  setBattleRandom(() => 0);
+  battleTurn(0, 1, player, cpu, "thunder", "thunder"); // グーがパーに負ける
+  setBattleRandom(Math.random);
+  assert.equal(cpu.hp, 24);
+});
+
+test("装備「幸運の指輪」: あいこ時、確率が閾値未満なら追加パワー+1(maxPowerでクランプ)", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { power: 0, maxPower: 3, equipDrawBonusChance: 0.5 });
+  const cpu = freshState("thunder");
+  setBattleRandom(() => 0);
+  battleTurn(0, 0, player, cpu, "thunder", "thunder"); // グー同士であいこ
+  setBattleRandom(Math.random);
+  assert.equal(player.power, 1);
+});
+
+test("装備「呪縛の鎖」: パワー消費時、確率が閾値未満なら相手に呪い+1を付与する", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { power: 3, maxPower: 5, equipCurseOnPowerUseChance: 0.5 });
+  const cpu = freshState("thunder");
+  setBattleRandom(() => 0);
+  battleTurn(0, 2, player, cpu, "thunder", "thunder"); // パワー消費グー(2消費)でチョキに勝つ
+  setBattleRandom(Math.random);
+  assert.equal(cpu.curseStacks, 1);
+});
+
+test("装備「不屈の心」: 致死ダメージをHP1で耐える(itemSurviveChargesとは別枠のプール)", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { hp: 2, equipSurviveCharges: 1 });
+  const cpu = freshState("thunder");
+  battleTurn(0, 1, player, cpu, "thunder", "thunder"); // グーがパーに負け、固定2ダメージで致死(HP2→0)
+  assert.equal(player.hp, 1);
+  assert.equal(player.equipSurviveCharges, 0);
+  assert.equal(callsTo("handlePlayerDefeated").length, 0);
+});
+
+test("装備「疾風の羽根」: 直前と違う手を出すたびにequipHandChangeBonus分パワーが増える(パー獲得分とは別加算)", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { power: 0, maxPower: 5, equipHandChangeBonus: 1 });
+  const cpu = freshState("thunder");
+  battleTurn(0, 0, player, cpu, "thunder", "thunder"); // 1回目: グー(直前の手が無いのでボーナス無し)
+  assert.equal(player.power, 0);
+  battleTurn(1, 0, player, cpu, "thunder", "thunder"); // 2回目: パー(直前と違う手)→ハンドチェンジ+1、パー獲得+1で計+2
+  assert.equal(player.power, 2);
+});
+
+test("装備「掌握の腕輪」等: equipPaperGainBonusはパーのパワー獲得量に加算される", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder", { power: 0, maxPower: 5, equipPaperGainBonus: 2 });
+  const cpu = freshState("thunder");
+  battleTurn(1, 0, player, cpu, "thunder", "thunder"); // パー(通常+1)+equipPaperGainBonus(+2)=+3
+  assert.equal(player.power, 3);
+});
+
+test("装備「闘志の紋章」用のequipWinStreakCountは連勝で増え、敗北・あいこでリセットされる", () => {
+  resetCallLog();
+  resetBattleCounters();
+  const player = freshState("thunder");
+  const cpu = freshState("thunder");
+  battleTurn(0, 2, player, cpu, "thunder", "thunder"); // 勝ち
+  assert.equal(player.equipWinStreakCount, 1);
+  battleTurn(0, 2, player, cpu, "thunder", "thunder"); // 勝ち
+  assert.equal(player.equipWinStreakCount, 2);
+  battleTurn(0, 1, player, cpu, "thunder", "thunder"); // 負け
+  assert.equal(player.equipWinStreakCount, 0);
 });
 
 summarize("tests/battle.test.js");

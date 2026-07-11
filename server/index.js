@@ -52,7 +52,7 @@ function cleanupRoom(code) {
 io.on("connection", (socket) => {
   socket.on("createRoom", () => {
     const code = generateRoomCode();
-    rooms[code] = { players: [socket.id], attributes: {}, hands: {}, rematchRequests: new Set() };
+    rooms[code] = { players: [socket.id], attributes: {}, equipmentPlacements: {}, hands: {}, rematchRequests: new Set() };
     socket.join(code);
     socket.data.roomCode = code;
     socket.emit("roomCreated", { code });
@@ -78,19 +78,23 @@ io.on("connection", (socket) => {
     io.to(normalized).emit("roomReady");
   });
 
-  socket.on("chooseAttribute", ({ attribute }) => {
+  // equipmentPlacementsは中継専用(サーバー側で形やルール検証はしない、ファイル冒頭のコメント参照)。
+  // クライアントが送ってきた内容をそのまま相手に転送するだけで、attribute/handと同じ信頼レベル。
+  socket.on("chooseAttribute", ({ attribute, equipmentPlacements }) => {
     const code = socket.data.roomCode;
     const room = rooms[code];
     if (!room) return;
 
     room.attributes[socket.id] = attribute;
+    room.equipmentPlacements[socket.id] = equipmentPlacements || [];
     if (Object.keys(room.attributes).length < 2) return;
 
     room.players.forEach((playerId) => {
       const opponentId = getOpponentSocketId(room, playerId);
       io.to(playerId).emit("battleStart", {
         yourAttribute: room.attributes[playerId],
-        opponentAttribute: room.attributes[opponentId]
+        opponentAttribute: room.attributes[opponentId],
+        opponentEquipmentPlacements: room.equipmentPlacements[opponentId]
       });
     });
   });

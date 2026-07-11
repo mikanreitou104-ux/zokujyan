@@ -702,3 +702,128 @@
   transform: translateY(-2px);
 }
 
+/* ===== 装備システム：3×3グリッド配置UI(MYメニュー「装備」タブ) ===== */
+.equip-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 100px);
+  grid-template-rows: repeat(3, 100px);
+  gap: 8px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+.equip-grid-cell {
+  width: 100px;
+  height: 100px;
+  box-sizing: border-box;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-radius: 10px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  overflow: hidden;
+  cursor: default;
+}
+
+.equip-grid-cell.occupied {
+  background: var(--equip-cell-color, #9aa5b1);
+  border-color: rgba(255,255,255,0.6);
+  cursor: pointer;
+}
+
+.equip-grid-cell.preview-valid {
+  outline: 3px solid #33cc55;
+  outline-offset: -3px;
+}
+
+.equip-grid-cell.preview-invalid {
+  outline: 3px solid #ff3355;
+  outline-offset: -3px;
+}
+
+.equip-grid-cell.placement-flash {
+  animation: equipPlacementFlash 0.3s ease;
+}
+
+@keyframes equipPlacementFlash {
+  0%, 100% { background: rgba(255,255,255,0.06); }
+  50% { background: rgba(255, 51, 85, 0.6); }
+}
+
+.equip-selection-panel {
+  margin-top: 16px;
+  padding: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.equip-selection-name {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.equip-shape-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 24px);
+  grid-template-rows: repeat(3, 24px);
+  gap: 3px;
+  justify-content: center;
+  margin: 0 auto 12px;
+}
+
+.equip-shape-preview-cell {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.05);
+}
+
+.equip-shape-preview-cell.filled {
+  background: var(--accent-gold, #ffd24d);
+  border-color: rgba(255,255,255,0.6);
+}
+
+.equip-owned-card {
+  border: 2px solid var(--equip-cell-color, #9aa5b1);
+  cursor: pointer;
+}
+
+.equip-owned-card.selected {
+  outline: 3px solid var(--accent-gold, #ffd24d);
+  outline-offset: 2px;
+}
+
+.equip-owned-card.depleted {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.equip-owned-name {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.equip-owned-desc {
+  font-size: 13px;
+  opacity: 0.85;
+  margin-bottom: 8px;
+}
+
+.equip-owned-count {
+  font-size: 13px;
+  opacity: 0.75;
+}
+

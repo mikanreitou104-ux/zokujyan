@@ -120,8 +120,8 @@ export function connectOnlineSocket() {
     enterOnlineAttributeSelect();
   });
 
-  onlineSocket.on("battleStart", ({ opponentAttribute }) => {
-    callbacks.beginVersusBattle("online", opponentAttribute, "./images/enemy/mizusra.png");
+  onlineSocket.on("battleStart", ({ opponentAttribute, opponentEquipmentPlacements }) => {
+    callbacks.beginVersusBattle("online", opponentAttribute, "./images/enemy/mizusra.png", opponentEquipmentPlacements);
   });
 
   onlineSocket.on("roundResult", ({ opponentHand, yourSeed, opponentSeed }) => {

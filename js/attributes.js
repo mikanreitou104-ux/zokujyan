@@ -7,6 +7,10 @@ let battleRandomImpl = Math.random;
 export function setBattleRandom(fn) {
   battleRandomImpl = fn;
 }
+// battle.js側(装備の確率発動効果)から同じシード付き乱数を使えるようにするラッパー。
+export function battleRandom(actingState) {
+  return battleRandomImpl(actingState);
+}
 
 export const ATTR_BASE_STATUS = {
   fire: {
@@ -124,11 +128,29 @@ export function baseDamage(hand, usedPower, attribute, attackerState, powerCost)
 
 // 属性補正計算
 
-export function attributeBonus(state, hand, attribute, usedPower) {
+export function attributeBonus(state, hand, attribute, usedPower, defenderState) {
     let bonus = 0;
 
     // ▼ 属性を問わず加算される汎用ボーナス(アイテムカード用)
     bonus += (state.genericAtkBonus || 0);
+
+    // ▼ 属性を問わず加算される汎用ボーナス(装備システム用、アイテムカードとは別枠)
+    bonus += (state.equipAtkBonus || 0);
+
+    // ▼ 装備「連勝中、攻撃力+N」(闘志の紋章)：battle.js側でequipWinStreakCountを勝敗ごとに更新する
+    if (state.equipWinStreakBonus && state.equipWinStreakCount > 0) {
+        bonus += state.equipWinStreakBonus;
+    }
+
+    // ▼ 装備「相手のHPが20%以下の時、攻撃力+N」(終焉の刃)
+    if (state.equipExecuteBonus && defenderState && defenderState.hp <= defenderState.maxHp * 0.2) {
+        bonus += state.equipExecuteBonus;
+    }
+
+    // ▼ 手固有の装備ボーナス(グー/チョキの固定ダメージ・パーの固定ダメージ)
+    if (hand === 0) bonus += (state.equipRockBonus || 0);
+    if (hand === 2) bonus += (state.equipScissorsBonus || 0);
+    if (hand === 1) bonus += (state.equipPaperBonus || 0);
 
     // ▼ 「連勝の証」：連勝数に応じて積み上がる攻撃力(あいこ・敗北でitemWinStreakCountが0に戻る)
     bonus += (state.itemWinStreakCount || 0);
@@ -205,6 +227,14 @@ export function damageReduction(state, attribute) {
     // ▼ 属性を問わず軽減される汎用ボーナス(アイテムカード用)
     reduction += (state.genericDefReduction || 0);
 
+    // ▼ 属性を問わず軽減される汎用ボーナス(装備システム用、アイテムカードとは別枠)
+    reduction += (state.equipDefReduction || 0);
+
+    // ▼ 装備「HPが20%以下の時、被ダメージ-N」(守護の光)
+    if (state.equipLowHpDefBonus && state.hp <= state.maxHp * 0.2) {
+        reduction += state.equipLowHpDefBonus;
+    }
+
     // ▼ 石
     if (attribute === "stone") {
         reduction += (state.stoneDefenseReduction || 0);
@@ -244,7 +274,7 @@ export function calcDamage(
     let damage = baseDamage(attackerHand, usedPower, attackerAttribute, attackerState, attackerPowerCost);
 
     // ② 属性補正
-    damage += attributeBonus(attackerState, attackerHand, attackerAttribute, usedPower);
+    damage += attributeBonus(attackerState, attackerHand, attackerAttribute, usedPower, defenderState);
 
     // ③ ローグライク補正（今はまだ0）
     damage += roguelikeBonus(attackerState);
@@ -262,7 +292,7 @@ export function previewAttackDamage(attackerState, defenderState, hand, attacker
     const usedPower = hand === 0 && canUsePower(attackerAttribute, attackerState, cost);
 
     let damage = baseDamage(hand, usedPower, attackerAttribute, attackerState, cost);
-    damage += attributeBonus(attackerState, hand, attackerAttribute, usedPower);
+    damage += attributeBonus(attackerState, hand, attackerAttribute, usedPower, defenderState);
     damage += roguelikeBonus(attackerState);
     damage -= damageReduction(defenderState, defenderAttribute);
 
@@ -641,7 +671,7 @@ export const ATTR_LOGIC = {
       // グーが当たったかどうかに関わらず、パワーを消費した時点で相手に呪いを付与する
       // (アイテムカード「呪詛の増幅」で付与量(通常+1)を底上げできる)
       const stackAmount = 1 + (player.itemCurseStackBonus || 0);
-      opponent.curseStacks = (opponent.curseStacks || 0) + stackAmount;
+      addCurseStacks(opponent, stackAmount);
     },
     getStatus(player) {
       return [
@@ -769,12 +799,21 @@ export const ATTR_LOGIC = {
   }
 };
 
-// 毒(DOT)の状態を防御側に付与/更新する。既に毒が残っている場合はダメージ+1・継続ターン数を3にリセットする
-export function applyPoison(defenderState) {
+// 毒(DOT)の状態を防御側に付与/更新する。既に毒が残っている場合はダメージ+amount・継続ターン数を3にリセットする。
+// 装備「静寂の仮面」(equipStatusResistRate)を持つ防御側は付与量が半減する(切り上げ、最低1)。
+export function applyPoison(defenderState, amount = 1) {
+  const finalAmount = defenderState.equipStatusResistRate ? Math.max(1, Math.ceil(amount / 2)) : amount;
   defenderState.poisonDamage = defenderState.poisonTurnsLeft > 0
-    ? (defenderState.poisonDamage || 0) + 1
-    : 1;
+    ? (defenderState.poisonDamage || 0) + finalAmount
+    : finalAmount;
   defenderState.poisonTurnsLeft = 3;
+}
+
+// 呪いスタックを防御側に付与する。装備「静寂の仮面」(equipStatusResistRate)を持つ防御側は
+// 付与量が半減する(切り上げ、最低1)。curseStacksへの加算は必ずこの関数を経由させる。
+export function addCurseStacks(defenderState, amount) {
+  const finalAmount = defenderState.equipStatusResistRate ? Math.max(1, Math.ceil(amount / 2)) : amount;
+  defenderState.curseStacks = (defenderState.curseStacks || 0) + finalAmount;
 }
 
 // 毒のDOTを1ターン分ティックする（毎ターン両者に対して呼ぶ）

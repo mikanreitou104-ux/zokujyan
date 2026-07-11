@@ -3,7 +3,7 @@
 // 一切直接呼ばず、setBattleCallbacks()で注入されたものだけを使う(attributes.js/save-data.jsと同じDIパターン)。
 // playerState/cpuState/playerAttribute/cpuAttributeもmain.js側のグローバルをimportするのではなく、
 // battleTurn()の引数として毎回渡してもらう(循環importを避けるため)。
-import { ATTR_LOGIC, calcDamage, getPowerCost, canUsePower, tickPoison, tickGamblerKakuhen, applyPoison } from "./attributes.js";
+import { ATTR_LOGIC, calcDamage, getPowerCost, canUsePower, tickPoison, tickGamblerKakuhen, applyPoison, addCurseStacks, battleRandom } from "./attributes.js";
 import { updateQuestProgress } from "./quests.js";
 import { getStatByPath, incrementStat } from "./save-data.js";
 
@@ -76,10 +76,17 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
 
   // ▼ アイテムカードは常にプレイヤー側のみに適用される(敵はカードを取得しない)ため、
   // 以降の`item*`系フィールドのチェックはplayerState側にのみ書く。
-  // 「疾風の靴」：直前と違う手を出すたびにパワー+1(枚数分スタックする)
-  if (playerState.itemPowerOnHandChangeStacks) {
-    if (playerState.itemLastHandForBoots !== null && playerState.itemLastHandForBoots !== undefined && playerState.itemLastHandForBoots !== playerHand) {
-      playerState.power = Math.min(playerState.power + playerState.itemPowerOnHandChangeStacks, playerState.maxPower);
+  // 「疾風の靴」/装備「疾風の羽根」：直前と違う手を出すたびにパワー+1(枚数分スタックする)
+  // どちらも「直前の手と違うか」を同じitemLastHandForBootsトラッカーで判定する(片方だけ所持していても動く)。
+  if (playerState.itemPowerOnHandChangeStacks || playerState.equipHandChangeBonus) {
+    const handChanged = playerState.itemLastHandForBoots !== null && playerState.itemLastHandForBoots !== undefined && playerState.itemLastHandForBoots !== playerHand;
+    if (handChanged) {
+      if (playerState.itemPowerOnHandChangeStacks) {
+        playerState.power = Math.min(playerState.power + playerState.itemPowerOnHandChangeStacks, playerState.maxPower);
+      }
+      if (playerState.equipHandChangeBonus) {
+        playerState.power = Math.min(playerState.power + playerState.equipHandChangeBonus, playerState.maxPower);
+      }
     }
     playerState.itemLastHandForBoots = playerHand;
   }
@@ -114,7 +121,7 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       playerPowerFrozen = true;
       cpuState.freezeReady = false;
     } else {
-      const paperGain = (ATTR_LOGIC[playerAttribute].paperGain || 1) + (playerState.itemPaperGainBonus || 0);
+      const paperGain = (ATTR_LOGIC[playerAttribute].paperGain || 1) + (playerState.itemPaperGainBonus || 0) + (playerState.equipPaperGainBonus || 0);
       const playerNewPower = playerState.power + paperGain;
       // 「貯蓄の心得」：パワー上限を超えた分をHP回復に変換する。
       // 超過分は「パーで+1のところ上限で頭打ち」のケースがほとんどで常に1になりがちなため、
@@ -232,6 +239,35 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       }
     }
 
+    // ▼ 装備の勝利時フック(いずれも確率発動はbattleRandom(playerState)経由でオンライン同期させる)
+    // 「連勝の証」とは別枠のトラッカー。装備「闘志の紋章」の「連勝中、攻撃力+N」判定に使う。
+    playerState.equipWinStreakCount = (playerState.equipWinStreakCount || 0) + 1;
+
+    // 「猛毒の牙」：勝利時に一定確率で相手へ毒1スタック
+    if (playerState.equipPoisonOnWinChance && battleRandom(playerState) < playerState.equipPoisonOnWinChance) {
+      applyPoison(cpuState);
+    }
+
+    // 「氷結の指輪」：勝利時に一定確率で相手の次のパー獲得を無効化(氷のfreezeReadyを流用)
+    if (playerState.equipFreezeChanceOnWin && battleRandom(playerState) < playerState.equipFreezeChanceOnWin) {
+      cpuState.freezeReady = true;
+    }
+
+    // 「生命奪取の剣」：勝利ダメージの一定割合を自分のHPに還元
+    if (playerState.equipLifestealRate) {
+      const lifestealAmount = Math.floor(damage * playerState.equipLifestealRate);
+      const lifestealHealed = Math.min(lifestealAmount, playerState.maxHp - playerState.hp);
+      playerState.hp = Math.min(playerState.hp + lifestealAmount, playerState.maxHp);
+      if (lifestealHealed > 0) callbacks.showDamageNumber("player", lifestealHealed, { heal: true });
+    }
+
+    // 「悪食の顎」：グー勝利時、相手のパワーを1奪う
+    if (playerHand === 0 && playerState.equipPowerStealOnWin && cpuState.power > 0) {
+      const stolenPower = Math.min(playerState.equipPowerStealOnWin, cpuState.power);
+      cpuState.power = Math.max(0, cpuState.power - stolenPower);
+      playerState.power = Math.min(playerState.power + stolenPower, playerState.maxPower);
+    }
+
     if (ATTR_LOGIC[cpuAttribute].onHpChange) {
       ATTR_LOGIC[cpuAttribute].onHpChange(cpuState);
     }
@@ -327,6 +363,12 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       playerState.thunderCharge = 3;
   }
 
+    // 「執念の目」：HPが1の時、1戦闘に1回だけ被ダメージを完全無効化(枚数分プールを1つ消費)
+    if (playerState.hp === 1 && playerState.equipDeathDefianceCharges > 0) {
+      playerState.equipDeathDefianceCharges--;
+      cpudamage = 0;
+    }
+
     playerState.hp -= cpudamage;
 
     // 「棘の鎧」：受けたダメージの一定割合を相手に反射する
@@ -338,10 +380,18 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       }
     }
 
+    // 「反撃の棘」：被弾時、一定確率で相手に1ダメージ反射
+    if (cpudamage > 0 && playerState.equipReflectChance && battleRandom(playerState) < playerState.equipReflectChance) {
+      cpuState.hp = Math.max(0, cpuState.hp - 1);
+      callbacks.showDamageNumber("cpu", 1);
+    }
+
     // 「連勝の証」：敗北で連勝ボーナスがリセットされる
     if (playerState.itemWinStreakBonusPerWin) {
       playerState.itemWinStreakCount = 0;
     }
+    // 装備「闘志の紋章」用の連勝トラッカーも敗北でリセット
+    playerState.equipWinStreakCount = 0;
 
     if (ATTR_LOGIC[playerAttribute].onHpChange) {
       ATTR_LOGIC[playerAttribute].onHpChange(playerState);
@@ -370,6 +420,12 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
       playerState.hp = 1;
       callbacks.showDamageNumber("player", 1, { heal: true });
     }
+    // 装備「不屈の心」：アイテムカードと同じ仕組みの別枠プール
+    if (playerState.hp <= 0 && playerState.equipSurviveCharges > 0) {
+      playerState.equipSurviveCharges--;
+      playerState.hp = 1;
+      callbacks.showDamageNumber("player", 1, { heal: true });
+    }
 
     if (playerState.hp <= 0) {
       callbacks.handlePlayerDefeated();
@@ -390,6 +446,13 @@ function battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute,
     // 「連勝の証」：あいこでも連勝ボーナスがリセットされる
     if (playerState.itemWinStreakBonusPerWin) {
       playerState.itemWinStreakCount = 0;
+    }
+    // 装備「闘志の紋章」用の連勝トラッカーもあいこでリセット
+    playerState.equipWinStreakCount = 0;
+
+    // 「幸運の指輪」：あいこ時に一定確率で追加パワー+1
+    if (playerState.equipDrawBonusChance && battleRandom(playerState) < playerState.equipDrawBonusChance) {
+      playerState.power = Math.min(playerState.power + 1, playerState.maxPower);
     }
 
     let drawNote = "";
@@ -485,6 +548,12 @@ if (cpuAttribute === "thunder" && cpuChargeAtStart === (cpuState.thunderChargeMa
     playerState.hp = 1;
     callbacks.showDamageNumber("player", 1, { heal: true });
   }
+  // 装備「不屈の心」：同上の別枠プール
+  if (playerState.hp <= 0 && playerState.equipSurviveCharges > 0) {
+    playerState.equipSurviveCharges--;
+    playerState.hp = 1;
+    callbacks.showDamageNumber("player", 1, { heal: true });
+  }
   if (playerState.hp <= 0) {
     callbacks.handlePlayerDefeated();
     return;
@@ -497,7 +566,12 @@ if (cpuAttribute === "thunder" && cpuChargeAtStart === (cpuState.thunderChargeMa
   // 「呪いの人形」：属性に関わらず、パワー消費のたびに相手へ呪いを付与する(付与量は枚数分スタックする)
   // (ATTR_LOGIC[attr].onPowerUseが無い属性でも発動するよう、専用の分岐にしている)
   if (playerUsedPower && playerState.itemCurseOnPowerUseStacks) {
-    cpuState.curseStacks = (cpuState.curseStacks || 0) + playerState.itemCurseOnPowerUseStacks;
+    addCurseStacks(cpuState, playerState.itemCurseOnPowerUseStacks);
+  }
+
+  // 「呪縛の鎖」：パワー消費時、一定確率で相手に呪い+1(itemCurseOnPowerUseStacksとは別枠)
+  if (playerUsedPower && playerState.equipCurseOnPowerUseChance && battleRandom(playerState) < playerState.equipCurseOnPowerUseChance) {
+    addCurseStacks(cpuState, 1);
   }
 
   // ▼ チャージ増加（ターン終了時）

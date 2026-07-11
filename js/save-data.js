@@ -3,7 +3,7 @@
 // プレイヤーの永続データを扱う。DOM更新(コイン表示・クエストバッジ・プロフィール表示の再描画)は
 // main.js/quests.js側の責務なので、注入されたコールバック経由で呼び出す(setUICallbacks参照)。
 import { ATTR_BASE_STATUS } from "./attributes.js";
-import { EQUIPMENT_CATALOG, getEquipmentCellsAt, canPlaceCells } from "./equipment-catalog.js";
+import { EQUIPMENT_CATALOG, getEquipmentCellsAt, canPlaceCells, sumEquipmentEffects } from "./equipment-catalog.js";
 
 let onCoinsChanged = () => {};
 let onQuestBadgeChanged = () => {};
@@ -66,7 +66,10 @@ export const DEFAULT_SAVE_DATA = {
   clearedStages: [],           // クリア済みステージID一覧（ストーリーモード）
   defeatedEnemyImages: [],     // ストーリーモードで一度でも倒した敵のimgパス一覧(ショップの「倒すと購入可能」条件に使用)
   equipment: {                 // 装備システム(負けても失われない永続インベントリ、アイテムカードとは別物)
-    owned: {},                 // { [equipmentId]: 所持数 }
+    // いったんの初期装備として3種を無料付与(フェーズ3のストーリー敵撃破ドロップが未実装のため、
+    // 現状これが唯一の入手経路になっている暫定措置)。powerCoreは意図的に含めていない
+    // (tests/equipment-catalog.test.jsの「未所持なら配置に失敗する」検証にそのまま使うため)。
+    owned: { ironCharm: 1, guardPlate: 1, vitalityBand: 1 }, // { [equipmentId]: 所持数 }
     placements: [],            // [{ placementId, equipmentId, anchorRow, anchorCol, rotation, cells }]
     nextPlacementId: 1
   }
@@ -273,4 +276,62 @@ export function unequipEquipmentFromGrid(placementId) {
   saveData.equipment.placements.splice(index, 1);
   saveSaveData();
   return true;
+}
+
+export function getEquippedEffectsTotal() {
+  return sumEquipmentEffects(saveData.equipment.placements);
+}
+
+// ベース値への累積加算(maxHp/maxPower/戦闘開始時power)が必要なフィールドは、単純な代入ではなく
+// 個別の計算が要る(hpもmaxHpに追従させる、power上限でクランプする等)ため、下のループでは
+// 素通ししない特別扱いにしている。
+const EQUIPMENT_CUMULATIVE_FIELDS = new Set(["equipMaxHpBonus", "equipMaxPowerBonus", "equipStartingPowerBonus"]);
+
+// 任意のplacements配列からstateへ装備効果を反映する汎用関数。playerState(saveData.equipment.placements)
+// だけでなく、CPU戦のランダム生成装備・オンライン対戦相手の同期済み装備にも同じロジックを使い回すために
+// 2026-07-11に切り出した(以前はapplyEquipmentBonuses(state)がsaveDataを決め打ちで読んでいた)。
+// アイテムカードのapply(p)と違い、装備は永続データなので「その時点の装備構成から毎回集計し直す」
+// 方式にしている。装備87種はいずれもeffectsのキー名がstateのフィールド名と1対1対応するため、新しい装備を
+// 追加してもここは触らずに済む(EQUIPMENT_CUMULATIVE_FIELDSに該当しない限り、そのままコピーする)。
+export function applyEquipmentEffectsToState(state, placements) {
+  const totals = sumEquipmentEffects(placements);
+  Object.keys(totals).forEach(key => {
+    if (EQUIPMENT_CUMULATIVE_FIELDS.has(key)) return;
+    state[key] = totals[key] || 0;
+  });
+
+  if (totals.equipMaxHpBonus) {
+    state.maxHp += totals.equipMaxHpBonus;
+    state.hp += totals.equipMaxHpBonus; // 戦闘開始時点でhpもmaxHpに合わせて底上げする
+  }
+  if (totals.equipMaxPowerBonus) {
+    state.maxPower += totals.equipMaxPowerBonus;
+  }
+  if (totals.equipStartingPowerBonus) {
+    state.power = Math.min(state.power + totals.equipStartingPowerBonus, state.maxPower);
+  }
+
+  // トレードオフ装備(HP-N系)を極端に積み重ねても戦闘開始時点でHPが0以下にならないようにする安全弁。
+  state.maxHp = Math.max(1, state.maxHp);
+  state.hp = Math.max(1, Math.min(state.hp, state.maxHp));
+}
+
+// 新しいplayerStateが作られるたびに呼ぶ(main.jsのストーリー開始/beginVersusBattle)。
+// 装備の付け外しはMYメニューでいつでも行える想定のため、その時点のsaveData.equipment.placementsから
+// 毎回集計し直す。cpuStateにはこちらを使わず、applyEquipmentEffectsToState(cpuState, placements)を
+// 呼び出し元(main.js)で直接使う(cpuStateはsaveDataを持たないため)。
+export function applyEquipmentBonuses(state) {
+  applyEquipmentEffectsToState(state, saveData.equipment.placements);
+}
+
+// スキル(type:"skill"の装備、押して発動)の「1戦闘に1回×装備した枚数分」の残り回数を
+// 戦闘開始のたびに構築し直す。applyEquipmentBonuses(state)の直後に呼ぶ想定(cpuStateには適用しない)。
+export function initSkillCharges(state) {
+  state.skillChargesRemaining = {};
+  Object.keys(EQUIPMENT_CATALOG)
+    .filter(id => EQUIPMENT_CATALOG[id].type === "skill")
+    .forEach(id => {
+      const placedCount = getPlacedEquipmentCount(id);
+      if (placedCount > 0) state.skillChargesRemaining[id] = placedCount;
+    });
 }
