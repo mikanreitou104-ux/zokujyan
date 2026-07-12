@@ -141,6 +141,56 @@ window.ownAllSkills = function (amount = 1) {
   console.log(`スキルを${amount}個ずつ付与しました。MYメニューの装備タブ→「スキル」で確認できます。`);
 };
 
+// ===== 一時的措置：全プレイヤーが全装備を使えるようにする =====
+// ショップ購入・敵撃破ドロップ等の入手導線が整うまでの暫定措置。起動のたびに全装備の所持数を
+// 3×3グリッドの最大マス数(9)まで底上げする(本来の所持数が9以上ある分は上書きしない)。
+//
+// この措置で「上乗せした分」だけをsaveData.equipment.tempGrantedに { [id]: 付与数 } として個別記録し、
+// 本来の所持数(ショップ購入・初期付与など)とは常に区別しておく。次回アップデートで取り上げる時は
+// TEMP_EQUIPMENT_UNLOCK_ACTIVEをfalseにするだけでよい。tempGrantedに記録した分だけを正確に差し引き、
+// 本来の所持数には一切手を付けない。差し引いた結果グリッドの配置数が所持数を上回ってしまった場合は、
+// はみ出た配置分を自動で外す(所持していないはずの装備が盤面に残ったままにならないようにするため)。
+const TEMP_EQUIPMENT_UNLOCK_ACTIVE = true;
+const TEMP_EQUIPMENT_UNLOCK_MIN_COUNT = 9;
+
+(function syncTemporaryEquipmentGrant() {
+  if (!saveData.equipment.tempGranted) saveData.equipment.tempGranted = {};
+  const tempGranted = saveData.equipment.tempGranted;
+  let changed = false;
+
+  if (TEMP_EQUIPMENT_UNLOCK_ACTIVE) {
+    Object.keys(EQUIPMENT_CATALOG).forEach(id => {
+      const granted = tempGranted[id] || 0;
+      const realOwned = (saveData.equipment.owned[id] || 0) - granted;
+      const desiredGrant = Math.max(0, TEMP_EQUIPMENT_UNLOCK_MIN_COUNT - realOwned);
+      if (desiredGrant !== granted) {
+        saveData.equipment.owned[id] = realOwned + desiredGrant;
+        tempGranted[id] = desiredGrant;
+        changed = true;
+      }
+    });
+  } else {
+    Object.keys(tempGranted).forEach(id => {
+      const granted = tempGranted[id] || 0;
+      if (granted <= 0) return;
+      saveData.equipment.owned[id] = Math.max(0, (saveData.equipment.owned[id] || 0) - granted);
+      tempGranted[id] = 0;
+      changed = true;
+
+      // 取り上げ後、所持数を配置数が上回っていたら、はみ出た分から順に自動で外す
+      let excess = getPlacedEquipmentCount(id) - getOwnedEquipmentCount(id);
+      while (excess > 0) {
+        const placement = saveData.equipment.placements.find(p => p.equipmentId === id);
+        if (!placement) break;
+        unequipEquipmentFromGrid(placement.placementId);
+        excess--;
+      }
+    });
+  }
+
+  if (changed) saveSaveData();
+})();
+
 // ===== 固定デザイン解像度(1920x1080) → 実ウィンドウへのレターボックス拡縮 =====
 const GAME_WIDTH = 1920;
 const GAME_HEIGHT = 1080;
