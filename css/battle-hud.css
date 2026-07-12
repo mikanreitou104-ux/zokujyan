@@ -154,20 +154,57 @@
    中身が無い時はrenderPlayerEquipmentGrid()がdisplay:noneにするため、空の余白は出ない。
    2026-07-11: 「マスが小さくて見づらい/名前が見えない」との指摘を受け、34px→64pxに拡大し
    マス自体に装備名を常時表示する形に変更(以前はホバー時のブラウザ標準title属性頼りだった)。
-   positionをrelativeにしているのは、下の#equip-hud-tooltip(カスタムツールチップ)を
-   このグリッド基準で絶対配置するため。 */
+   2026-07-12: 「HPバーの箱の中から出して、大きくしてほしい」との指摘を受け、position:absoluteに変更して
+   .hud-panel(HPバー等が入った黒背景の箱)の外に出し、94pxへさらに拡大した。
+   .hud-panelがposition:absoluteなので、このグリッドの絶対配置はそちらが基準になる。
+   プレイヤー側は自分のHUD(左下)の上に、CPU側は相手のHUD(右上)の下に配置する
+   （#player-equipment-grid/#cpu-equipment-gridの向き別ルールを参照）。
+   positionをabsoluteにしているのは、下の#equip-hud-tooltip(カスタムツールチップ)を
+   このグリッド基準で絶対配置するのと、.hud-panelから独立させて浮かせる両方を兼ねるため。 */
 .equip-grid-mini {
-  margin-top: 8px;
   display: grid;
-  grid-template-columns: repeat(3, 64px);
-  grid-template-rows: repeat(3, 64px);
-  gap: 6px;
-  position: relative;
+  grid-template-columns: repeat(3, 94px);
+  grid-template-rows: repeat(3, 94px);
+  gap: 8px;
+  position: absolute;
+  left: 0;
+}
+
+/* プレイヤー自身のHUD(左下、bottom基準)の上に浮かせる。
+   margin-bottomはhud-tab-row(カード/スキルタブ、top:-42px)より上に出るだけの余白を確保している */
+#player-equipment-grid {
+  bottom: 100%;
+  margin-bottom: 56px;
+}
+
+/* 相手(CPU)のHUD(右上、top基準)の下に浮かせる。
+   2026-07-12: 「相手の装備は少し小さく、右づめに」との指摘を受け、left:0を打ち消してright:0にし
+   (.cpu-hud自体もright基準で配置されているのに合わせる)、マスサイズも94px→78pxへ縮小した */
+#cpu-equipment-grid {
+  top: 100%;
+  margin-top: 16px;
+  left: auto;
+  right: 0;
+  grid-template-columns: repeat(3, 78px);
+  grid-template-rows: repeat(3, 78px);
+}
+
+#cpu-equipment-grid .equip-grid-mini-cell {
+  width: 78px;
+  height: 78px;
+}
+
+#cpu-equipment-grid .equip-grid-mini-cell-name {
+  font-size: 12px;
+}
+
+#cpu-equipment-grid .equip-grid-mini-cell-charge-badge {
+  font-size: 14px;
 }
 
 .equip-grid-mini-cell {
-  width: 64px;
-  height: 64px;
+  width: 94px;
+  height: 94px;
   box-sizing: border-box;
   border: 1px solid rgba(255,255,255,0.25);
   border-radius: 8px;
@@ -176,7 +213,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3px;
+  padding: 4px;
   overflow: hidden;
 }
 
@@ -187,7 +224,7 @@
 
 /* マスの基準セル(配置の左上)にだけ入る装備名。他のマスは色だけで名前は入れない(繰り返し表示を避ける) */
 .equip-grid-mini-cell-name {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.2;
   color: #fff;
@@ -221,9 +258,9 @@
    セル全体の文字ではなく右上に固定表示する専用要素にしている */
 .equip-grid-mini-cell-charge-badge {
   position: absolute;
-  top: 2px;
-  right: 4px;
-  font-size: 13px;
+  top: 3px;
+  right: 5px;
+  font-size: 16px;
   font-weight: 900;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0,0,0,0.9);

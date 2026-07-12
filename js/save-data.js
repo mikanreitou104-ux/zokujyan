@@ -27,6 +27,7 @@ export const DEFAULT_SAVE_DATA = {
   equippedIconBg: "red",
   ownedIcons: ["akasra"], // カットイン等で使うアイコン画像本体。初期は赤スライムのみ所持
   equippedIcon: "akasra",
+  equippedTitle: null,         // 装備中の称号id(js/titles.js)。null(未設定)はgetEquippedTitleId()がbeginnerへフォールバック
   statBoosts: {                // ストーリーモード用の初期ステータス強化（ショップで購入）
     hp: 0,
     power: 0
@@ -71,7 +72,8 @@ export const DEFAULT_SAVE_DATA = {
     // (tests/equipment-catalog.test.jsの「未所持なら配置に失敗する」検証にそのまま使うため)。
     owned: { ironCharm: 1, guardPlate: 1, vitalityBand: 1 }, // { [equipmentId]: 所持数 }
     placements: [],            // [{ placementId, equipmentId, anchorRow, anchorCol, rotation, cells }]
-    nextPlacementId: 1
+    nextPlacementId: 1,
+    favorites: []              // お気に入り登録したequipmentIdの一覧。所持リストの並び替えで先頭に固定する
   }
 };
 
@@ -253,6 +255,20 @@ export function getPlacedEquipmentCount(equipmentId) {
 // 所持数のうち、まだグリッドに配置していない残数(UIが「あと何個置けるか」を出すのに使う)。
 export function getAvailableEquipmentCount(equipmentId) {
   return getOwnedEquipmentCount(equipmentId) - getPlacedEquipmentCount(equipmentId);
+}
+
+export function isEquipmentFavorite(equipmentId) {
+  return saveData.equipment.favorites.includes(equipmentId);
+}
+
+// お気に入りの一覧はプレイヤー自身にしか意味を持たない(CPU/オンライン相手の表示には使わない)ため、
+// equipmentSelectionのようなグリッド配置と違い、単純なid配列のトグルで十分。
+export function toggleEquipmentFavorite(equipmentId) {
+  const favorites = saveData.equipment.favorites;
+  const index = favorites.indexOf(equipmentId);
+  if (index === -1) favorites.push(equipmentId);
+  else favorites.splice(index, 1);
+  saveSaveData();
 }
 
 // 成功時は新規placementId(1以上のnumber)を返す。同じ装備を複数枚同時配置できるため、

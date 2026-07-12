@@ -281,8 +281,13 @@
 }
 .player-hand-area {
   position: absolute;
-  left: 75%;        /* ← やや右寄り */
-  top: 55%;         /* ← 中央より少し下 */
+  /* 2026-07-11の装備グリッド拡大でCPU HUD(.cpu-hud)の縦幅が伸び、旧位置(left:75%/top:55%)だと
+     HUD右下の装備マスに重なってしまうため、HUDの下・手札カード列の右側の空きへ移動した。
+     2026-07-12：装備グリッドを.hud-panelの外に出しCPU側は.cpu-hudの「下」に浮かせる形に変更した際、
+     今度はそのグリッド(#cpu-equipment-grid、画面下端まで拡張)と重なるようになったため、
+     さらに下(top:66%→76%)へ逃がしている */
+  left: 78%;
+  top: 76%;
   transform: translate(-50%, -50%);
   width: 230px;
   height: 230px;
@@ -314,6 +319,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+/* まだ手を出していない（中の img が src="" の）間は、白い箱だけが浮いて見えてしまうため
+   箱ごと非表示にする（img自体は既存の[src=""]ルールで非表示化されている） */
+.cpu-hand-box:has(.cpu-hand-img[src=""]),
+.player-hand-box:has(.player-hand-img[src=""]) {
+  opacity: 0;
 }
 
 /* じゃんけん演出の大きい手札（黒い手アイコン対策でカード風の白背景を敷く） */
@@ -630,6 +644,98 @@
   25%  { transform: scale(1); opacity: 1; }
   85%  { transform: scale(1); opacity: 1; }
   100% { transform: scale(1); opacity: 0; }
+}
+
+/* オンライン対戦専用のVS演出：自分/相手の実際のプロフィール(アイコン・名前・称号)を大きく見せる。
+   .battle-start-splashと同じ絶対配置オーバーレイだが、一回り大きく・名前の下に称号を表示する。
+   アニメーションは上のbattleStartFade/SlideInLeft/SlideInRight/VsPopをそのまま流用する
+   (%指定のキーフレームなのでanimation-durationを変えるだけで速度を調整できる、新規keyframesは追加しない)。 */
+.online-vs-splash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 96px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: var(--z-battle-start-splash);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.online-vs-splash .online-vs-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  opacity: 0;
+}
+
+.online-vs-icon-wrap {
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 5px solid #fff;
+  box-shadow: 0 0 32px rgba(0, 0, 0, 0.7);
+}
+
+.online-vs-icon {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+}
+
+.online-vs-name {
+  font-size: 46px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+  letter-spacing: 2px;
+}
+
+.online-vs-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+}
+
+.online-vs-tag {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 4px;
+}
+
+.online-vs-vs {
+  font-size: 97px;
+  font-weight: 900;
+  font-style: italic;
+  color: #ffd400;
+  text-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 0 10px rgba(255, 212, 0, 0.6);
+  opacity: 0;
+  transform: scale(2);
+}
+
+.online-vs-splash.show {
+  animation: battleStartFade 1.6s ease-out forwards;
+}
+
+.online-vs-splash.show .online-vs-player {
+  animation: battleStartSlideInLeft 1.6s ease-out forwards;
+}
+
+.online-vs-splash.show .online-vs-opponent {
+  animation: battleStartSlideInRight 1.6s ease-out forwards;
+}
+
+.online-vs-splash.show .online-vs-vs {
+  animation: battleStartVsPop 1.6s ease-out forwards;
 }
 
 /* 10ダメージ以上が実際に着弾した瞬間の大きめフラッシュ・シェイク */

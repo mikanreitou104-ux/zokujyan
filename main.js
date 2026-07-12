@@ -47,6 +47,8 @@ import {
   getPlacedEquipmentCount,
   equipEquipmentToGrid,
   unequipEquipmentFromGrid,
+  isEquipmentFavorite,
+  toggleEquipmentFavorite,
   setUICallbacks
 } from "./js/save-data.js";
 
@@ -121,6 +123,10 @@ import {
 } from "./js/audio.js";
 
 import { SKIN_CATALOG, ICON_BG_CATALOG, ICON_CATALOG } from "./js/shop-catalog.js";
+
+// 称号一覧の描画・装備切り替えはprofile.js側の責務(screen-profileの開閉・描画を一括して持つため)。
+// main.js側はVSスプラッシュ・オンライン同期で「今装備している称号名」を読むだけなので、これ1つだけimportする。
+import { getEquippedTitleName } from "./js/titles.js";
 
 // ===== デバッグ用コンソールヘルパー =====
 // main.jsはtype="module"で読み込まれているため、ownEquipment等のimportした関数は
@@ -443,15 +449,29 @@ const EQUIPMENT_RARITY_RANK = { common: 0, rare: 1, epic: 2 };
 
 // 所持している装備のidを、現在のequipmentSortModeに応じて並び替える。
 // Array.sortは安定ソートなので、同順位内では常にEQUIPMENT_CATALOGの元の登録順(Tierの並び)が保たれる。
+// お気に入りは、選んだ並び順の中で常に先頭に固定する(安定ソートの2段掛けで実現)。
 function sortEquipmentIds(ids) {
-  if (equipmentSortMode === "size") {
-    return [...ids].sort((a, b) => EQUIPMENT_CATALOG[a].shape.length - EQUIPMENT_CATALOG[b].shape.length);
+  const sorted = equipmentSortMode === "size"
+    ? [...ids].sort((a, b) => EQUIPMENT_CATALOG[a].shape.length - EQUIPMENT_CATALOG[b].shape.length)
+    : [...ids].sort((a, b) => {
+        const rankA = EQUIPMENT_RARITY_RANK[EQUIPMENT_CATALOG[a].rarity] ?? 0;
+        const rankB = EQUIPMENT_RARITY_RANK[EQUIPMENT_CATALOG[b].rarity] ?? 0;
+        return rankA - rankB;
+      });
+  return sorted.sort((a, b) => (isEquipmentFavorite(b) ? 1 : 0) - (isEquipmentFavorite(a) ? 1 : 0));
+}
+
+// 装備の形(3×3グリッドのどのマスを占めるか)をミニプレビューとして描くHTML。
+// 所持カードの小さいサムネイル・選択パネルの大きいプレビューの両方で共有する。
+function shapeGridHTML(shape, cellClass) {
+  let html = "";
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+      const filled = shape.some(([cr, cc]) => cr === r && cc === c);
+      html += `<div class="${cellClass}${filled ? " filled" : ""}"></div>`;
+    }
   }
-  return [...ids].sort((a, b) => {
-    const rankA = EQUIPMENT_RARITY_RANK[EQUIPMENT_CATALOG[a].rarity] ?? 0;
-    const rankB = EQUIPMENT_RARITY_RANK[EQUIPMENT_CATALOG[b].rarity] ?? 0;
-    return rankA - rankB;
-  });
+  return html;
 }
 
 function renderEquipmentGrid() {
@@ -489,8 +509,11 @@ function equipmentCardHTML(id) {
   const isSelected = equipmentSelection && equipmentSelection.equipmentId === id;
   const depletedClass = available <= 0 && !isSelected ? "depleted" : "";
   const selectedClass = isSelected ? "selected" : "";
+  const favorite = isEquipmentFavorite(id);
   return `
     <div class="skin-card equip-owned-card ${depletedClass} ${selectedClass}" style="--equip-cell-color:${color}" data-equip-id="${id}">
+      <button type="button" class="equip-favorite-btn ${favorite ? "active" : ""}" data-equip-id="${id}" aria-label="お気に入り切り替え">${favorite ? "★" : "☆"}</button>
+      <div class="equip-owned-shape">${shapeGridHTML(eq.shape, "equip-owned-shape-cell")}</div>
       <div class="equip-owned-name">${eq.name}</div>
       <div class="equip-owned-desc">${eq.desc}</div>
       <div class="equip-owned-count">${available} / ${owned} 個 配置可能</div>
@@ -524,18 +547,7 @@ function renderEquipmentShapePreview() {
 
   const eq = EQUIPMENT_CATALOG[equipmentSelection.equipmentId];
   document.getElementById("equipment-selection-name").textContent = eq.name;
-
-  const cells = eq.shape;
-  const previewEl = document.getElementById("equipment-shape-preview");
-  previewEl.innerHTML = "";
-  for (let r = 0; r < GRID_SIZE; r++) {
-    for (let c = 0; c < GRID_SIZE; c++) {
-      const cell = document.createElement("div");
-      cell.className = "equip-shape-preview-cell";
-      if (cells.some(([cr, cc]) => cr === r && cc === c)) cell.classList.add("filled");
-      previewEl.appendChild(cell);
-    }
-  }
+  document.getElementById("equipment-shape-preview").innerHTML = shapeGridHTML(eq.shape, "equip-shape-preview-cell");
 }
 
 function renderEquipmentTab() {
@@ -563,6 +575,15 @@ document.querySelectorAll(".equip-sort-btn").forEach(btn => {
 });
 
 document.getElementById("equipment-owned-list").addEventListener("click", (e) => {
+  // お気に入りボタンは装備の選択(配置モード開始)より優先する。装備の所持数・在庫に関係なく
+  // いつでも押せてよいため、depleted状態のカードでも動くようcard判定より先に処理する
+  const favoriteBtn = e.target.closest(".equip-favorite-btn");
+  if (favoriteBtn) {
+    toggleEquipmentFavorite(favoriteBtn.dataset.equipId);
+    renderEquipmentOwnedList();
+    return;
+  }
+
   const card = e.target.closest(".equip-owned-card");
   if (!card) return;
   const id = card.dataset.equipId;
@@ -2010,6 +2031,30 @@ function showBattleStartSplash(playerAttr, cpuAttr) {
   el.classList.add("show");
 }
 
+// オンライン対戦専用のVS演出。相手は実プレイヤーなので、属性ではなく本物のプロフィール
+// (アイコン・名前・称号)を見せる。playerProfile/opponentProfileは
+// { name, iconId, iconBgId, titleName } の形(opponentProfileはjs/online.jsのbattleStart経由で同期される)。
+function showOnlineVsSplash(playerProfile, opponentProfile) {
+  const el = document.getElementById("onlineVsSplash");
+  if (!el) return;
+
+  function fillSide(prefix, profile) {
+    const icon = ICON_CATALOG[profile.iconId] || ICON_CATALOG.akasra;
+    const iconBg = ICON_BG_CATALOG[profile.iconBgId] || ICON_BG_CATALOG.red;
+    document.getElementById(`${prefix}IconWrap`).style.background = iconBg.css;
+    document.getElementById(`${prefix}Icon`).src = icon.img;
+    document.getElementById(`${prefix}Name`).textContent = profile.name || "対戦相手";
+    document.getElementById(`${prefix}Title`).textContent = profile.titleName || "";
+  }
+
+  fillSide("onlineVsPlayer", playerProfile);
+  fillSide("onlineVsOpponent", opponentProfile);
+
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+}
+
 function playEnemyZoomIn() {
   const enemy = document.getElementById("enemy-img");
 
@@ -2147,9 +2192,15 @@ const confirmModalYes = document.getElementById("confirmModalYes");
 const confirmModalNo = document.getElementById("confirmModalNo");
 
 // message: 表示する確認文言 / onConfirm: 「はい」を押したときだけ呼ばれる処理
-function showConfirmModal(message, onConfirm) {
+// okOnly: true にすると「いいえ」ボタンを隠し、「はい」を「OK」表記にする。
+// (相手退出・回線切断通知のような「はい/いいえ」で選べない一方的な通知に使う。
+// 通常のconfirm modalのまま「いいえ」を出すと、押しても何も起きず画面に取り残される
+// ソフトロックになってしまうため)
+function showConfirmModal(message, onConfirm, { okOnly = false } = {}) {
   confirmModalMessage.textContent = message;
   confirmModal.classList.add("show");
+  confirmModalNo.style.display = okOnly ? "none" : "";
+  confirmModalYes.textContent = okOnly ? "OK" : "はい";
 
   const onYes = () => {
     cleanup();
@@ -2433,7 +2484,7 @@ if (btnCpuAttrConfirmBack) {
 // CPU戦・オンライン対戦共通の「戦闘準備」処理。オンラインではattributeが確定した後(battleStart受信時)に呼ぶ
 // opponentEquipmentPlacements: CPU戦では省略(このあと下でランダム生成する)、オンライン対戦では
 // サーバーから同期された相手の実際の装備構成(js/online.jsのbattleStartハンドラ経由)を渡す。
-function beginVersusBattle(mode, opponentAttribute, enemyImgPath, opponentEquipmentPlacements = null) {
+function beginVersusBattle(mode, opponentAttribute, enemyImgPath, opponentEquipmentPlacements = null, opponentProfile = null) {
   battleContext.mode = mode;
 
   // 前回オンライン対戦で使ったシード付き乱数が残っていると、CPU戦でもbattleRandom()が
@@ -2518,12 +2569,23 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath, opponentEquipm
     setTimeout(() => {
       openCurtain();
       playEnemyZoomIn();
-      showBattleStartSplash(playerAttribute, cpuAttribute);
 
-      // ⑥ VSスプラッシュ(1s)が表示し終わってから手札を配る
+      // オンライン対戦だけ、属性アイコンの簡易VSではなく相手の本物のプロフィール(アイコン・名前・称号)
+      // を大きく見せる専用演出にする(showOnlineVsSplash、main.js内のshowBattleStartSplashの直後に定義)。
+      // 名前・称号まで読ませる分、表示時間を通常の1sより長め(1.6s)にする。
+      if (mode === "online") {
+        showOnlineVsSplash(
+          { name: saveData.profileName, iconId: saveData.equippedIcon, iconBgId: saveData.equippedIconBg, titleName: getEquippedTitleName() },
+          opponentProfile || {}
+        );
+      } else {
+        showBattleStartSplash(playerAttribute, cpuAttribute);
+      }
+
+      // ⑥ VSスプラッシュが表示し終わってから手札を配る(オンラインはCSS側もdurationを1.6sにしてあるため合わせる)
       setTimeout(() => {
         dealHandCards();
-      }, 1000);
+      }, mode === "online" ? 1600 : 1000);
     }, 50);
 
   }, 600); // ← CSS の transition と同じ 0.6s
@@ -2534,8 +2596,18 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath, opponentEquipm
 
 document.getElementById("btn-cpu-attr-confirm-next").addEventListener("click", () => {
   if (battleContext.mode === "online") {
-    // オンライン対戦：自分の属性と装備構成をサーバーに送り、相手の選択を待つ(battleStart受信でbeginVersusBattleが呼ばれる)
-    connectOnlineSocket().emit("chooseAttribute", { attribute: playerAttribute, equipmentPlacements: saveData.equipment.placements });
+    // オンライン対戦：自分の属性・装備構成・プロフィール(VSスプラッシュ表示用)をサーバーに送り、
+    // 相手の選択を待つ(battleStart受信でbeginVersusBattleが呼ばれる)
+    connectOnlineSocket().emit("chooseAttribute", {
+      attribute: playerAttribute,
+      equipmentPlacements: saveData.equipment.placements,
+      profile: {
+        name: saveData.profileName,
+        iconId: saveData.equippedIcon,
+        iconBgId: saveData.equippedIconBg,
+        titleName: getEquippedTitleName()
+      }
+    });
     showOnlineWaiting("相手の属性選択を待っています…");
     return;
   }
@@ -2765,70 +2837,79 @@ function startJankenScene(playerHand) {
   const playerCard = document.getElementById("jankenPlayerCard");
   const cpuCard = document.getElementById("jankenCpuCard");
   const jankenText = document.getElementById("jankenText");
- const overlay = document.getElementById("darkOverlay");
-  overlay.classList.add("show");
-  // 画面切り替え
-  scene.style.display = "block";
- scene.classList.add("show");
-  // 裏面セット（プレイヤーは装備中のカードスキン、CPUは常にデフォルト）
-  playerCard.src = SKIN_CATALOG[saveData.equippedSkin].img;
-  cpuCard.src = SKIN_CATALOG.default.img;
+  const overlay = document.getElementById("darkOverlay");
 
-  // 初期位置に戻す
-  playerCard.classList.remove("show");
-  cpuCard.classList.remove("show");
-
-  // 10ダメージ以上になりそうな攻撃なら、ぽん!前にカットイン演出を挟んで少し間を伸ばす
-  const potentialDamage = previewAttackDamage(playerState, cpuState, playerHand, playerAttribute, cpuAttribute);
-  const isBigAttack = potentialDamage >= 10;
-  const cutInDelay = isBigAttack ? 700 : 0;
-  if (isBigAttack) {
-    showBigAttackCutIn();
+  // 画面を暗転させてじゃんけんシーンを開く。相手の手(cpuHand)が確定してから呼ぶ関数なので、
+  // オンライン対戦では両者の手が揃うまでこれ自体を呼ばない(=画面はそれまで一切変化しない)。
+  function openJankenScene() {
+    overlay.classList.add("show");
+    scene.style.display = "block";
+    scene.classList.add("show");
+    // 裏面セット（プレイヤーは装備中のカードスキン、CPUは常にデフォルト）
+    playerCard.src = SKIN_CATALOG[saveData.equippedSkin].img;
+    cpuCard.src = SKIN_CATALOG.default.img;
+    // 初期位置に戻す
+    playerCard.classList.remove("show");
+    cpuCard.classList.remove("show");
   }
 
-  // 少し遅らせて飛ばす
-  setTimeout(() => {
-    playerCard.classList.add("show");
-    cpuCard.classList.add("show");
-  }, 50 + cutInDelay);
-
-  // 「じゃんけん」
-  setTimeout(() => {
-    jankenText.innerText = "じゃんけん…";
-    jankenText.style.opacity = 1;
-  }, 600 + cutInDelay);
-
-  // 「ぽん！」で表にする
-  setTimeout(() => {
-    jankenText.innerText = "ぽん！";
-    const handImg = ["R","P","S"];
-
-    if (battleContext.mode === "online") {
-      // オンライン対戦：相手の手は既にcommitHand()で送信済みのroundResultから取得する
-      // (相手の応答がまだ届いていなければ、届いた瞬間にこのコールバックが呼ばれる)
-      resolveOnlineOpponentHand(({ opponentHand: cpuHand, yourSeed, opponentSeed }) => {
-        // このラウンドの乱数を両クライアントで一致させるため、battleTurn()を呼ぶ前に必ずシードし直す
-        seedOnlineRng(yourSeed, opponentSeed);
-
-        playerCard.src = `./images/hands/${handImg[playerHand]}.png`;
-        cpuCard.src = `./images/hands/${handImg[cpuHand]}.png`;
-        battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute, cpuAttribute);
-      });
-      return;
+  // 相手の手(cpuHand)が確定した後に呼ぶ。カットイン〜カード表示〜「じゃんけん…」「ぽん！」の
+  // 一連の演出はCPU戦・オンライン対戦のどちらでも共通なので、ここに1つだけ用意する。
+  function playOutJankenAnimation(cpuHand, onReveal) {
+    // 10ダメージ以上になりそうな攻撃なら、ぽん!前にカットイン演出を挟んで少し間を伸ばす
+    const potentialDamage = previewAttackDamage(playerState, cpuState, playerHand, playerAttribute, cpuAttribute);
+    const isBigAttack = potentialDamage >= 10;
+    const cutInDelay = isBigAttack ? 700 : 0;
+    if (isBigAttack) {
+      showBigAttackCutIn();
     }
 
-    const aiType = battleContext.mode === "story"
-      ? STAGE_CATALOG[battleContext.stageId].enemies[battleContext.enemyIndex].aiType
-      : "balanced";
-    const cpuHand = cpuChooseHand(aiType); // ← CPUの手を決定（ストーリーモードは敵ごとのaiTypeを使用）
+    // 少し遅らせて飛ばす
+    setTimeout(() => {
+      playerCard.classList.add("show");
+      cpuCard.classList.add("show");
+    }, 50 + cutInDelay);
 
-    playerCard.src = `./images/hands/${handImg[playerHand]}.png`;
-    cpuCard.src = `./images/hands/${handImg[cpuHand]}.png`;
+    // 「じゃんけん」
+    setTimeout(() => {
+      jankenText.innerText = "じゃんけん…";
+      jankenText.style.opacity = 1;
+    }, 600 + cutInDelay);
 
-    // 勝敗処理へ
+    // 「ぽん！」で表にする
+    setTimeout(() => {
+      jankenText.innerText = "ぽん！";
+      const handImg = ["R","P","S"];
+      playerCard.src = `./images/hands/${handImg[playerHand]}.png`;
+      cpuCard.src = `./images/hands/${handImg[cpuHand]}.png`;
+      onReveal();
+    }, 1400 + cutInDelay);
+  }
+
+  if (battleContext.mode === "online") {
+    // オンライン対戦：相手がまだ手を選んでいない間は画面を一切変えずに待つ(暗転もシーン表示もしない)。
+    // 相手の手(roundResult)が実際に届いた瞬間、暗転+じゃんけん演出をまとめて開始する。
+    resolveOnlineOpponentHand(({ opponentHand: cpuHand, yourSeed, opponentSeed }) => {
+      // このラウンドの乱数を両クライアントで一致させるため、battleTurn()を呼ぶ前に必ずシードし直す
+      seedOnlineRng(yourSeed, opponentSeed);
+      openJankenScene();
+      playOutJankenAnimation(cpuHand, () => {
+        battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute, cpuAttribute);
+      });
+    });
+    return;
+  }
+
+  openJankenScene();
+
+  const aiType = battleContext.mode === "story"
+    ? STAGE_CATALOG[battleContext.stageId].enemies[battleContext.enemyIndex].aiType
+    : "balanced";
+  const cpuHand = cpuChooseHand(aiType); // ← CPUの手を決定（ストーリーモードは敵ごとのaiTypeを使用）
+
+  playOutJankenAnimation(cpuHand, () => {
     battleTurn(playerHand, cpuHand, playerState, cpuState, playerAttribute, cpuAttribute);
-
-  }, 1400 + cutInDelay);
+  });
 }
 
 // CPUの撃破演出＋勝敗遷移（通常攻撃・毒のDOTどちらから呼ばれても同じ処理にする）

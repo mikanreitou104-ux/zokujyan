@@ -10,6 +10,7 @@ import { ICON_CATALOG, ICON_BG_CATALOG } from "./shop-catalog.js";
 import { STAGE_CATALOG } from "./story-catalog.js";
 import { QUEST_CATALOG } from "./quests.js";
 import { ATTR_BASE_STATUS } from "./attributes.js";
+import { TITLE_CATALOG, isTitleUnlocked, getEquippedTitleId, getEquippedTitleName, equipTitle } from "./titles.js";
 
 let callbacks = {};
 export function setProfileCallbacks({ showScreen, showNameEditModal }) {
@@ -64,6 +65,35 @@ export function updateModeProfileDisplay() {
   if (iconImg) iconImg.src = icon.img;
 }
 
+// 称号カード1枚分のHTML(skinCardHTML等と同じ「カード+ステータス+ボタン」パターン)。
+// 未解放は.depleted(既存のスキル残り回数0カードと同じグレーアウト見た目)を流用し、条件文(hint)を表示する。
+function titleCardHTML(id) {
+  const title = TITLE_CATALOG[id];
+  const unlocked = isTitleUnlocked(id);
+  const equipped = getEquippedTitleId() === id;
+
+  let actionHtml;
+  if (equipped) {
+    actionHtml = `<div class="skin-status">装備中</div>`;
+  } else if (unlocked) {
+    actionHtml = `<button class="secondary-btn title-equip-btn" data-title="${id}">装備する</button>`;
+  } else {
+    actionHtml = `<div class="skin-status">${title.hint}</div>`;
+  }
+
+  return `
+    <div class="skin-card ${equipped ? "equipped" : ""} ${unlocked ? "" : "depleted"}">
+      <div class="skin-name">${title.name}</div>
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function renderProfileTitleList() {
+  const listEl = document.getElementById("profile-title-list");
+  if (listEl) listEl.innerHTML = Object.keys(TITLE_CATALOG).map(id => titleCardHTML(id)).join("");
+}
+
 // プロフィール画面本体の中身を描画する
 export function renderProfileScreen() {
   updateModeProfileDisplay();
@@ -71,8 +101,10 @@ export function renderProfileScreen() {
   const icon = ICON_CATALOG[saveData.equippedIcon] || ICON_CATALOG.akasra;
   const iconBg = ICON_BG_CATALOG[saveData.equippedIconBg] || ICON_BG_CATALOG.red;
   document.getElementById("profileNameDisplay").textContent = saveData.profileName || "ユーザー";
+  document.getElementById("profileTitleDisplay").textContent = getEquippedTitleName();
   document.getElementById("profileIconWrap").style.background = iconBg.css;
   document.getElementById("profileIconImg").src = icon.img;
+  renderProfileTitleList();
 
   const totalStages = Object.keys(STAGE_CATALOG).length;
   document.getElementById("profileStoryClear").textContent =
@@ -112,6 +144,17 @@ if (modeProfileChip) {
   modeProfileChip.addEventListener("click", () => {
     renderProfileScreen();
     callbacks.showScreen("screen-profile");
+  });
+}
+
+const profileTitleList = document.getElementById("profile-title-list");
+if (profileTitleList) {
+  profileTitleList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".title-equip-btn");
+    if (!btn) return;
+
+    equipTitle(btn.dataset.title);
+    renderProfileScreen(); // ヘッダーの称号バッジ・一覧の装備中表示を両方更新する
   });
 }
 

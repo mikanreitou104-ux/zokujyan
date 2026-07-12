@@ -275,8 +275,14 @@
         </div>
         <div class="profile-header-info">
           <div id="profileNameDisplay" class="profile-name-large">ユーザー</div>
+          <div id="profileTitleDisplay" class="profile-title-badge"></div>
           <button id="btn-profile-edit-name" class="secondary-btn">名前を変更</button>
         </div>
+      </div>
+
+      <div class="profile-section">
+        <h3>称号</h3>
+        <div id="profile-title-list" class="skin-list"></div>
       </div>
 
       <div class="profile-section">
@@ -324,7 +330,7 @@
       <div class="online-lobby-block">
         <h3>ルームに参加する</h3>
         <p class="online-lobby-desc">友達から教えてもらったルームコードを入力してください。</p>
-        <input type="text" id="online-join-code-input" class="name-edit-input online-join-input" maxlength="5" placeholder="例：7NH78">
+        <input type="text" id="online-join-code-input" class="name-edit-input online-join-input" maxlength="5" placeholder="例：7NH78" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false">
         <button id="btn-online-join-room" class="primary-btn">ルームに参加</button>
         <p id="online-join-error" class="online-join-error"></p>
       </div>
@@ -508,6 +514,23 @@
   <div class="battle-start-side battle-start-cpu">
     <img id="battleStartCpuIcon" class="battle-start-icon" src="" alt="">
     <span id="battleStartCpuName" class="battle-start-name"></span>
+  </div>
+</div>
+
+<!-- オンライン対戦専用のVS演出：自分/相手の実際のプロフィール(アイコン・名前・称号)を大きく見せる -->
+<div id="onlineVsSplash" class="online-vs-splash">
+  <div class="online-vs-side online-vs-player">
+    <div id="onlineVsPlayerIconWrap" class="online-vs-icon-wrap"><img id="onlineVsPlayerIcon" class="online-vs-icon" src="" alt=""></div>
+    <div id="onlineVsPlayerName" class="online-vs-name"></div>
+    <div id="onlineVsPlayerTitle" class="online-vs-title"></div>
+    <div class="online-vs-tag">あなた</div>
+  </div>
+  <span class="online-vs-vs">VS</span>
+  <div class="online-vs-side online-vs-opponent">
+    <div id="onlineVsOpponentIconWrap" class="online-vs-icon-wrap"><img id="onlineVsOpponentIcon" class="online-vs-icon" src="" alt=""></div>
+    <div id="onlineVsOpponentName" class="online-vs-name"></div>
+    <div id="onlineVsOpponentTitle" class="online-vs-title"></div>
+    <div class="online-vs-tag">対戦相手</div>
   </div>
 </div>
 

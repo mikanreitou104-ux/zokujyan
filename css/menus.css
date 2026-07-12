@@ -532,6 +532,13 @@
   transition: 0.2s;
 }
 .primary-btn:hover { transform: translateY(-3px); filter: brightness(1.15); }
+.primary-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+  filter: grayscale(0.3);
+  transform: none;
+}
+.primary-btn:disabled:hover { transform: none; filter: grayscale(0.3); }
 
 .secondary-btn {
   padding: 16px 27px;
@@ -795,9 +802,18 @@
   border-color: rgba(255,255,255,0.6);
 }
 
+/* 2026-07-12: 「装備を選ぶところがとても見づらい」との指摘を受け、
+   カードの高さがバラバラで揃わない(行ごとに説明文の折り返し行数が違う)問題と、
+   識別用の枠色だけでは装備の中身が一目で分からない問題を合わせて見直した。
+   min-heightで行の高さを揃え、後述の形サムネイル(.equip-owned-shape)で見た目の識別性も上げている。 */
 .equip-owned-card {
+  position: relative;
   border: 2px solid var(--equip-cell-color, #9aa5b1);
   cursor: pointer;
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .equip-owned-card.selected {
@@ -810,20 +826,75 @@
   cursor: default;
 }
 
+/* お気に入りトグル。カードの選択(配置モード)とは独立した操作なので、押しやすいよう右上に大きめに配置する */
+.equip-favorite-btn {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s, color 0.15s;
+}
+
+.equip-favorite-btn:hover {
+  transform: scale(1.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.equip-favorite-btn.active {
+  color: var(--accent-gold, #ffd24d);
+  text-shadow: 0 0 8px rgba(255, 210, 77, 0.7);
+}
+
+/* 装備の形の縮小プレビュー。枠色(識別用)だけでなく形そのものを見せることで、
+   グリッドに置いたときの見た目・置ける場所をカード一覧の時点で判断できるようにする */
+.equip-owned-shape {
+  display: grid;
+  grid-template-columns: repeat(3, 16px);
+  grid-template-rows: repeat(3, 16px);
+  gap: 3px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.equip-owned-shape-cell {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.equip-owned-shape-cell.filled {
+  background: var(--equip-cell-color, #9aa5b1);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
 .equip-owned-name {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .equip-owned-desc {
-  font-size: 13px;
-  opacity: 0.85;
-  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.92);
+  margin-bottom: 10px;
+  min-height: 3em; /* 説明文が1〜3行のどれでもカードの高さがそこで揃うよう最大想定の高さを確保する */
 }
 
 .equip-owned-count {
   font-size: 13px;
-  opacity: 0.75;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: auto; /* カードの残り余白を吸収し、常にカード下端に揃える */
+  padding-top: 6px;
 }
 

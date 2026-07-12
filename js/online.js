@@ -30,6 +30,11 @@ let onlineSocket = null;
 let onlineOpponentHandBuffer = null;   // roundResultが先に届いた場合に一時保持する
 let onlineOpponentHandCallback = null; // startJankenScene側が先に待ち構えている場合のコールバック
 
+// サーバー側にルームが存在する状態(作成/参加成功後〜退出前)かどうか。
+// disconnectイベントは接続前や退出後にも発火しうるため、「ルームにいた最中の予期しない切断」だけを
+// 拾って通知するためのフラグ(意図的なleaveOnlineRoom()や、まだルームに入っていない接続エラーとは区別する)。
+let socketWasInRoom = false;
+
 // シード付き疑似乱数生成器(mulberry32)。同じseedを与えれば両クライアントで同一の乱数列を再現できる
 function mulberry32(seed) {
   return function () {
@@ -104,24 +109,30 @@ export function connectOnlineSocket() {
   onlineSocket = io(getOnlineServerUrl());
 
   onlineSocket.on("connect_error", () => {
+    setOnlineLobbyButtonsConnecting(false);
     document.getElementById("online-join-error").textContent =
       "サーバーに接続できませんでした。時間をおいて再度お試しください。";
   });
 
   onlineSocket.on("roomCreated", ({ code }) => {
+    socketWasInRoom = true;
+    setOnlineLobbyButtonsConnecting(false);
     showOnlineWaiting("この5桁のコードを友達に伝えて、参加してもらいましょう。", code);
   });
 
   onlineSocket.on("joinError", (message) => {
+    setOnlineLobbyButtonsConnecting(false);
     document.getElementById("online-join-error").textContent = message;
   });
 
   onlineSocket.on("roomReady", () => {
+    socketWasInRoom = true;
+    setOnlineLobbyButtonsConnecting(false);
     enterOnlineAttributeSelect();
   });
 
-  onlineSocket.on("battleStart", ({ opponentAttribute, opponentEquipmentPlacements }) => {
-    callbacks.beginVersusBattle("online", opponentAttribute, "./images/enemy/mizusra.png", opponentEquipmentPlacements);
+  onlineSocket.on("battleStart", ({ opponentAttribute, opponentEquipmentPlacements, opponentProfile }) => {
+    callbacks.beginVersusBattle("online", opponentAttribute, "./images/enemy/mizusra.png", opponentEquipmentPlacements, opponentProfile);
   });
 
   onlineSocket.on("roundResult", ({ opponentHand, yourSeed, opponentSeed }) => {
@@ -140,11 +151,27 @@ export function connectOnlineSocket() {
   });
 
   onlineSocket.on("opponentLeft", () => {
+    socketWasInRoom = false;
+    // 「いいえ」を選べても何も解決しない一方的な通知なので、okOnly(OKのみ)モーダルにする
+    // (通常のはい/いいえモーダルのままだと「いいえ」でソフトロックしていた)
     callbacks.showConfirmModal("相手が退出しました。モード選択へ戻ります。", () => {
       // showScreen()だけだとBGMの切り替えや結果画面・演出のリセットが行われず、
       // 戦闘BGMが鳴りっぱなしになるバグがあったため、通常の離脱処理と同じexitBattleToScreen()に統一する
       callbacks.exitBattleToScreen("screen-mode");
-    });
+    }, { okOnly: true });
+  });
+
+  // 自分側の回線切断(Wi-Fi切断・サーバー再起動等)を検知する。
+  // 意図的なleaveOnlineRoom()はsocket.disconnect()を呼ばないため、このイベントは
+  // 常に「予期しない切断」を意味する。再接続後もサーバー側のルーム状態は失われている
+  // (サーバーのdisconnectハンドラが相手に通知した上でルームを破棄する)ため、
+  // 復帰を試みず素直にモード選択へ戻す。
+  onlineSocket.on("disconnect", () => {
+    if (!socketWasInRoom) return;
+    socketWasInRoom = false;
+    callbacks.showConfirmModal("サーバーとの接続が切れました。モード選択へ戻ります。", () => {
+      callbacks.exitBattleToScreen("screen-mode");
+    }, { okOnly: true });
   });
 
   // 相手が降参した場合、こちらは勝利扱いにする(BGM切り替え・状態リセットは
@@ -172,6 +199,7 @@ export function resolveOnlineOpponentHand(callback) {
 // ルームを離れる際の後片付け(モード選択に戻る/相手の退出を検知した際などに呼ぶ)
 export function leaveOnlineRoom() {
   if (onlineSocket) onlineSocket.emit("leaveRoom");
+  socketWasInRoom = false;
   onlineOpponentHandBuffer = null;
   onlineOpponentHandCallback = null;
 }
@@ -185,8 +213,32 @@ export function sendPlayHand(hand) {
   if (onlineSocket) onlineSocket.emit("playHand", { hand });
 }
 
+const onlineCreateRoomBtn = document.getElementById("btn-online-create-room");
+const onlineJoinRoomBtn = document.getElementById("btn-online-join-room");
+const onlineCreateRoomLabel = onlineCreateRoomBtn.textContent;
+const onlineJoinRoomLabel = onlineJoinRoomBtn.textContent;
+
+// ルーム作成/参加への応答は(サーバーがRenderの無料枠でスリープから復帰する場合など)
+// 数十秒かかることがある。連打で複数ルームが作られてしまうのを防ぎつつ、ボタン自体に
+// 「反応している」ことを示すため、応答が来るまで両方無効化してラベルを差し替える。
+function setOnlineLobbyButtonsConnecting(connecting) {
+  onlineCreateRoomBtn.disabled = connecting;
+  onlineJoinRoomBtn.disabled = connecting;
+  onlineCreateRoomBtn.textContent = connecting ? "接続中…" : onlineCreateRoomLabel;
+  onlineJoinRoomBtn.textContent = connecting ? "接続中…" : onlineJoinRoomLabel;
+}
+
+function submitJoinRoom() {
+  const code = document.getElementById("online-join-code-input").value.trim().toUpperCase();
+  document.getElementById("online-join-error").textContent = "";
+  if (!code) return;
+  setOnlineLobbyButtonsConnecting(true);
+  connectOnlineSocket().emit("joinRoom", code);
+}
+
 document.getElementById("btn-mode-online").addEventListener("click", () => {
   document.getElementById("online-join-error").textContent = "";
+  setOnlineLobbyButtonsConnecting(false);
   callbacks.showScreen("screen-online-lobby");
 });
 
@@ -195,14 +247,14 @@ document.getElementById("btn-online-lobby-back").addEventListener("click", () =>
 });
 
 document.getElementById("btn-online-create-room").addEventListener("click", () => {
+  setOnlineLobbyButtonsConnecting(true);
   connectOnlineSocket().emit("createRoom");
 });
 
-document.getElementById("btn-online-join-room").addEventListener("click", () => {
-  const code = document.getElementById("online-join-code-input").value.trim().toUpperCase();
-  document.getElementById("online-join-error").textContent = "";
-  if (!code) return;
-  connectOnlineSocket().emit("joinRoom", code);
+document.getElementById("btn-online-join-room").addEventListener("click", submitJoinRoom);
+
+document.getElementById("online-join-code-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitJoinRoom();
 });
 
 document.getElementById("btn-online-waiting-cancel").addEventListener("click", () => {
