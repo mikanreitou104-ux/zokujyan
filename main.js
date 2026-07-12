@@ -119,10 +119,11 @@ import {
   playCoinSE,
   playPurchaseSE,
   playCardHoverSE,
-  stopBGM
+  stopBGM,
+  playBGM
 } from "./js/audio.js";
 
-import { SKIN_CATALOG, ICON_BG_CATALOG, ICON_CATALOG } from "./js/shop-catalog.js";
+import { SKIN_CATALOG, ICON_BG_CATALOG, ICON_CATALOG, ATTRIBUTE_SHOP_PRICE } from "./js/shop-catalog.js";
 
 // 称号一覧の描画・装備切り替えはprofile.js側の責務(screen-profileの開閉・描画を一括して持つため)。
 // main.js側はVSスプラッシュ・オンライン同期で「今装備している称号名」を読むだけなので、これ1つだけimportする。
@@ -281,6 +282,7 @@ if (btnShop) {
     renderShopSkinList();
     renderShopIconList();
     renderShopIconBgList();
+    renderShopAttrList();
     // 前回開いた時のタブ状態が残らないよう、毎回「カードスキン」タブに戻す
     document.querySelectorAll(".shop-tab-btn").forEach(b => b.classList.remove("active"));
     document.querySelectorAll(".shop-tab-panel").forEach(p => p.classList.remove("active"));
@@ -438,6 +440,45 @@ function renderIconPreview() {
   preview.style.background = iconBg.css;
   previewImg.src = icon.img;
 }
+// ===== アイコンここまで =====
+
+// ===== ショップ：属性(全属性をATTRIBUTE_SHOP_PRICE固定コインで購入可能。基本3属性(fire/thunder/ice)は最初から解放済みなのでショップに出さない) =====
+function attrShopCardHTML(attr) {
+  const data = ATTR_DATA[attr];
+  const unlocked = isAttributeUnlocked(attr);
+  const actionHtml = unlocked
+    ? `<div class="skin-status">所持済み</div>`
+    : `<button class="secondary-btn attr-buy-btn" data-attr="${attr}">購入(${ATTRIBUTE_SHOP_PRICE}コイン)</button>`;
+
+  return `
+    <div class="skin-card ${unlocked ? "equipped" : ""}" style="--attr-color:${data.color}">
+      <img src="${data.img}" alt="${data.name}">
+      <div class="skin-name">${data.name}</div>
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function renderShopAttrList() {
+  document.getElementById("shopCoinsValue").textContent = saveData.coins;
+  document.getElementById("shop-attr-list").innerHTML =
+    Object.keys(ATTR_DATA)
+      .filter(attr => !["fire", "thunder", "ice"].includes(attr)) // 基本3属性は最初から解放済みなのでショップから除外
+      .map(attrShopCardHTML).join("");
+}
+
+document.getElementById("shop-attr-list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".attr-buy-btn");
+  if (!btn) return;
+
+  const attr = btn.dataset.attr;
+  if (spendCoins(ATTRIBUTE_SHOP_PRICE)) {
+    unlockAttribute(attr);
+    renderShopAttrList();
+    playPurchaseSE();
+  }
+});
+// ===== 属性ここまで =====
 
 // ===== 装備システム：MYメニュー「装備」タブ(3×3グリッド配置UI) =====
 // ドラッグ&ドロップではなくクリック方式: 所持リストのカードをクリックして選択 → グリッドのマスをクリックして配置。
@@ -992,6 +1033,7 @@ function resetBattleEffectsUI() {
 
 function resetHandCards() {
   handCommitted = false;
+  selectedCard = null; // 選択中カードへの参照が残ると、次のカードクリックが「2回目のクリック」として誤って即確定してしまう
 
   document.querySelectorAll(".hand-card").forEach(card => {
 
@@ -1202,8 +1244,7 @@ function exitBattleToScreen(targetScreenId) {
 
   stopBGM(bgmcpuBattle);
   stopBGM(bgmStory);
-  bgmMode.volume = currentBgmVolume;
-  bgmMode.play();
+  playBGM(bgmMode);
 
   showScreen(targetScreenId);
 }
@@ -1220,7 +1261,12 @@ document.getElementById("restartBtn").addEventListener("click", () => {
 });
 
 document.getElementById("btn-result-to-attr").addEventListener("click", () => {
-  exitBattleToScreen("screen-cpu-attr-select");
+  // オンライン対戦はexitBattleToScreen()内でleaveOnlineRoom()を呼びルームを破棄するため、
+  // 「属性選択へ戻る」で画面遷移先をscreen-cpu-attr-selectにすると、もう存在しないルーム宛に
+  // 新しい属性を選んでも相手に届かず「相手の属性選択を待っています…」のまま永久に止まる
+  // (chooseAttributeがサーバー側でroomが無いため無視される)ソフトロックになっていた。
+  // オンラインではモード選択へ戻す(相手が退出した際に飛ばす先と同じ)ことで解消する。
+  exitBattleToScreen(battleContext.mode === "online" ? "screen-mode" : "screen-cpu-attr-select");
 });
 
 document.getElementById("btn-result-to-mode").addEventListener("click", () => {
@@ -1300,15 +1346,11 @@ function enterStoryEnemy() {
   if (enemy.story) {
     // 読み物シーンの間だけ専用BGMに切り替え、戦闘開始時に戦闘BGMへ戻す
     stopBGM(bgmcpuBattle);
-    bgmStory.volume = currentBgmVolume;
-    bgmStory.currentTime = 0;
-    bgmStory.play();
+    playBGM(bgmStory);
 
     showStoryReadScreen(enemy.story, () => {
       stopBGM(bgmStory);
-      bgmcpuBattle.volume = currentBgmVolume;
-      bgmcpuBattle.currentTime = 0;
-      bgmcpuBattle.play();
+      playBGM(bgmcpuBattle);
       startStoryEnemy();
     });
   } else {
@@ -1776,9 +1818,7 @@ document.getElementById("item-card-list").addEventListener("click", (e) => {
     // 無ければここで戦闘BGMを開始する。
     const firstEnemy = STAGE_CATALOG[battleContext.stageId].enemies[0];
     if (!firstEnemy.story) {
-      bgmcpuBattle.volume = currentBgmVolume;
-      bgmcpuBattle.currentTime = 0;
-      bgmcpuBattle.play();
+      playBGM(bgmcpuBattle);
     }
   } else {
     battleContext.enemyIndex++;
@@ -1821,9 +1861,7 @@ function handleStoryEnemyDefeated() {
     document.getElementById("enemy-img").classList.remove("enemyFadeOut");
 
     stopBGM(bgmcpuBattle);
-    bgmStory.volume = currentBgmVolume;
-    bgmStory.currentTime = 0;
-    bgmStory.play();
+    playBGM(bgmStory);
 
     showStoryReadScreen(stage.clearStory, () => {
       stopBGM(bgmStory);
@@ -2067,6 +2105,13 @@ function playEnemyZoomIn() {
   }, 50);
 }
 function dealHandCards() {
+  // 決着(勝敗)時はresetHandCards()を経由せずhandleCpuDefeated/handlePlayerDefeated→結果画面へ直行するため、
+  // 最後に出した手のhandCommitted=trueが残ったままになる。特にオンライン対戦の再戦(「もう一度戦う」)は
+  // rematchBattle()を経由せずbeginVersusBattle()→dealHandCards()に直接来るため、ここでリセットしないと
+  // 2戦目以降ずっと手札をクリックしても反応しなくなる不具合になっていた。
+  handCommitted = false;
+  selectedCard = null; // 同上(選択中カードへの古い参照が残っていると次戦で誤って即確定する)
+
   const cards = document.querySelectorAll(".hand-card");
 
   cards.forEach((card, index) => {
@@ -2179,8 +2224,7 @@ document.getElementById("screen-title").addEventListener("click", () => {
 
   // モード画面BGMを再生（カーテンの遷移でモード画面に切り替わるタイミングに合わせる）
  setTimeout(() => {
-    bgmMode.volume = currentBgmVolume
-    bgmMode.play();
+    playBGM(bgmMode);
   }, 650); // ← ここを変えれば遅延時間を調整できる
 });
 
@@ -2535,10 +2579,7 @@ function beginVersusBattle(mode, opponentAttribute, enemyImgPath, opponentEquipm
   updateBattleUI();
 
   stopBGM(bgmMode);
-
-  bgmcpuBattle.volume = currentBgmVolume;
-  bgmcpuBattle.currentTime = 0;
-  bgmcpuBattle.play();
+  playBGM(bgmcpuBattle);
 
   setEnemyImage(enemyImgPath);
 

@@ -382,7 +382,8 @@
    MYメニューとショップは別々のクラスにして、片方のタブ切り替えがもう片方のactive状態に
    影響しないようにしている） */
 .mymenu-tab-nav,
-.shop-tab-nav {
+.shop-tab-nav,
+.profile-tab-nav {
   display: flex;
   justify-content: center;
   gap: 14px;
@@ -392,7 +393,8 @@
 }
 
 .mymenu-tab-btn,
-.shop-tab-btn {
+.shop-tab-btn,
+.profile-tab-btn {
   padding: 14px 30px;
   font-size: 20px;
   font-weight: 700;
@@ -405,12 +407,14 @@
 }
 
 .mymenu-tab-btn:hover,
-.shop-tab-btn:hover {
+.shop-tab-btn:hover,
+.profile-tab-btn:hover {
   background: rgba(255,255,255,0.2);
 }
 
 .mymenu-tab-btn.active,
-.shop-tab-btn.active {
+.shop-tab-btn.active,
+.profile-tab-btn.active {
   background: var(--accent-gold, #ffd24d);
   color: #222;
 }
@@ -435,13 +439,25 @@
 }
 
 .mymenu-tab-panel,
-.shop-tab-panel {
+.shop-tab-panel,
+.profile-tab-panel {
   display: none;
 }
 
 .mymenu-tab-panel.active,
-.shop-tab-panel.active {
+.shop-tab-panel.active,
+.profile-tab-panel.active {
   display: block;
+}
+
+/* プロフィールのヘッダー(肖像+称号ピル+名前プレート)がタブより上に大きく場所を取るため、
+   「実績・称号」タブの称号一覧のような中身が多いタブは.screenのoverflow:hiddenで見切れてしまう。
+   ショップと同じ理由でタブの中身だけスクロールできるようにするが、ヘッダー分だけ高さの余裕が
+   少ないため、ショップ(700px)より低いmax-heightにしている。 */
+.profile-tab-panel.active {
+  max-height: 430px;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 /* ショップはスキン/アイコンの種類が今後増えていく想定なので、タブの中身だけスクロールできるようにする

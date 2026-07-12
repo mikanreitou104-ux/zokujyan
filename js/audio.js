@@ -114,19 +114,54 @@ export function playModeBGM() {
   bgmMode.play();
 }
 
+// stopBGM()のフェードアウトはsetIntervalで数百ms掛けて進む非同期処理。
+// 同じ要素に対してフェード中にもう一度再生を始めると、フェードのintervalが後から
+// pause()を呼んでしまい「再生を始めたのに直後に止まる」ことがあった(オンライン対戦は
+// CPU戦よりも画面遷移が非同期(相手の応答待ち)を挟む分、フェード完了前に次の再生が
+// 始まるタイミングと重なりやすく、戦闘BGMが切り替わらない不具合として頻発していた)。
+// 要素ごとに進行中のfade intervalをここで管理し、新しい再生・新しいフェードを始める前に
+// 必ず前のフェードを打ち切る。
+const activeBgmFades = new WeakMap();
+
+function cancelBGMFade(bgm) {
+  const fadeId = activeBgmFades.get(bgm);
+  if (fadeId !== undefined) {
+    clearInterval(fadeId);
+    activeBgmFades.delete(bgm);
+  }
+}
+
 // ▼ BGMを止める（フェードアウト付き）
 export function stopBGM(bgm) {
+  cancelBGMFade(bgm); // 既に別のフェードが走っていたら先に打ち切る(二重フェードで音量が変に暴れるのを防ぐ)
   let vol = bgm.volume;
-  const fade = setInterval(() => {
+  const fadeId = setInterval(() => {
     vol -= 0.05;
     if (vol <= 0) {
       bgm.pause();
       bgm.currentTime = 0;
-      clearInterval(fade);
+      bgm.volume = 0;
+      clearInterval(fadeId);
+      activeBgmFades.delete(bgm);
     } else {
       bgm.volume = vol;
     }
   }, 50);
+  activeBgmFades.set(bgm, fadeId);
+}
+
+// ▼ BGMを(フェードなしで即座に)再生する共通ヘルパー。曲の切り替え箇所は必ずこれを経由させることで、
+// 進行中のstopBGM()フェードが再生開始後に割り込んでpause()してしまうのを防ぐ。
+export function playBGM(bgm, volume = currentBgmVolume) {
+  cancelBGMFade(bgm);
+  bgm.volume = volume;
+  bgm.currentTime = 0;
+  const playResult = bgm.play();
+  // ブラウザの自動再生ポリシー等でplay()が拒否された場合、未処理のPromise rejectionとして
+  // コンソールにエラーが出るだけで実害はなかった(既存動作)が、念のため握りつぶしておく。
+  if (playResult && typeof playResult.catch === "function") {
+    playResult.catch(() => {});
+  }
 }
 
 // 音量調整はMYメニュー設定タブ・戦闘画面メニューの両方から呼べるよう、変更処理を共通化する

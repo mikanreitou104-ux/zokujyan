@@ -143,9 +143,24 @@ const modeProfileChip = document.getElementById("modeProfileChip");
 if (modeProfileChip) {
   modeProfileChip.addEventListener("click", () => {
     renderProfileScreen();
+    // 前回開いた時のタブ状態が残らないよう、毎回「バトル成績」タブに戻す(MYメニュー/ショップと同じ方針)
+    document.querySelectorAll(".profile-tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".profile-tab-panel").forEach(p => p.classList.remove("active"));
+    document.querySelector(".profile-tab-btn").classList.add("active");
+    document.getElementById("profile-tab-battle").classList.add("active");
     callbacks.showScreen("screen-profile");
   });
 }
+
+// プロフィール専用のタブ切り替え(MYメニュー/ショップとは別クラスにして、お互いのactive状態に影響しないようにしている)
+document.querySelectorAll(".profile-tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".profile-tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".profile-tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.profileTabTarget).classList.add("active");
+  });
+});
 
 const profileTitleList = document.getElementById("profile-title-list");
 if (profileTitleList) {

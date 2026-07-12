@@ -222,6 +222,7 @@
       <button class="shop-tab-btn active" data-shop-tab-target="shop-skin-tab">カードスキン</button>
       <button class="shop-tab-btn" data-shop-tab-target="shop-icon-tab">アイコン画像</button>
       <button class="shop-tab-btn" data-shop-tab-target="shop-iconbg-tab">アイコン背景</button>
+      <button class="shop-tab-btn" data-shop-tab-target="shop-attr-tab">属性</button>
     </div>
 
     <div id="shop-skin-tab" class="settings-tab shop-tab-panel active">
@@ -237,6 +238,11 @@
     <div id="shop-iconbg-tab" class="settings-tab shop-tab-panel">
       <h2>アイコン背景</h2>
       <div id="shop-iconbg-list" class="skin-list"></div>
+    </div>
+
+    <div id="shop-attr-tab" class="settings-tab shop-tab-panel">
+      <h2>属性</h2>
+      <div id="shop-attr-list" class="skin-list"></div>
     </div>
   </section>
 
@@ -270,45 +276,59 @@
 
     <div class="settings-tab profile-panel">
       <div class="profile-header">
-        <div id="profileIconWrap" class="profile-icon profile-icon-large">
-          <img id="profileIconImg" class="profile-icon-img" src="" alt="icon">
+        <div id="profileIconWrap" class="profile-portrait-frame">
+          <img id="profileIconImg" class="profile-portrait-img" src="" alt="icon">
         </div>
         <div class="profile-header-info">
-          <div id="profileNameDisplay" class="profile-name-large">ユーザー</div>
-          <div id="profileTitleDisplay" class="profile-title-badge"></div>
-          <button id="btn-profile-edit-name" class="secondary-btn">名前を変更</button>
+          <div id="profileTitleDisplay" class="profile-title-pill"></div>
+          <div class="profile-name-plate">
+            <div id="profileNameDisplay" class="profile-name-large">ユーザー</div>
+            <button id="btn-profile-edit-name" class="secondary-btn">名前を変更</button>
+          </div>
         </div>
       </div>
 
-      <div class="profile-section">
-        <h3>称号</h3>
-        <div id="profile-title-list" class="skin-list"></div>
+      <div class="profile-tab-nav">
+        <button class="profile-tab-btn active" data-profile-tab-target="profile-tab-battle">バトル成績</button>
+        <button class="profile-tab-btn" data-profile-tab-target="profile-tab-online">オンライン対戦</button>
+        <button class="profile-tab-btn" data-profile-tab-target="profile-tab-etc">実績・称号</button>
       </div>
 
-      <div class="profile-section">
-        <h3>ストーリークリア状況</h3>
-        <p id="profileStoryClear"></p>
+      <div id="profile-tab-battle" class="profile-tab-panel active">
+        <div class="profile-section">
+          <h3>ストーリークリア状況</h3>
+          <p id="profileStoryClear"></p>
+        </div>
+
+        <div class="profile-section">
+          <h3>じゃんけん統計(CPU戦・ストーリー・オンライン合算)</h3>
+          <div id="profileHandStats" class="profile-hand-stats"></div>
+          <p>じゃんけんの勝率：<span id="profileOverallWinRate"></span></p>
+        </div>
       </div>
 
-      <div class="profile-section">
-        <h3>じゃんけん統計(CPU戦・ストーリー・オンライン合算)</h3>
-        <div id="profileHandStats" class="profile-hand-stats"></div>
-        <p>じゃんけんの勝率：<span id="profileOverallWinRate"></span></p>
+      <div id="profile-tab-online" class="profile-tab-panel">
+        <div class="profile-section">
+          <h3>オンライン対戦成績</h3>
+          <p id="profileOnlineWinRate"></p>
+        </div>
       </div>
 
-      <div class="profile-section">
-        <h3>オンライン対戦成績</h3>
-        <p id="profileOnlineWinRate"></p>
-      </div>
+      <div id="profile-tab-etc" class="profile-tab-panel">
+        <div class="profile-section">
+          <h3>クリアしたミッション数</h3>
+          <p id="profileQuestClear"></p>
+        </div>
 
-      <div class="profile-section">
-        <h3>クリアしたミッション数</h3>
-        <p id="profileQuestClear"></p>
-      </div>
+        <div class="profile-section">
+          <h3>獲得した属性数</h3>
+          <p id="profileAttrCount"></p>
+        </div>
 
-      <div class="profile-section">
-        <h3>獲得した属性数</h3>
-        <p id="profileAttrCount"></p>
+        <div class="profile-section">
+          <h3>称号</h3>
+          <div id="profile-title-list" class="skin-list"></div>
+        </div>
       </div>
     </div>
   </section>

@@ -30,3 +30,7 @@ export const ICON_CATALOG = {
   goblin:      { name: "ゴブリン",   img: "images/enemy/goblin.png",      price: 40, unlockEnemyImg: "./images/enemy/goblin.png" },
   hachi:       { name: "蜂",        img: "images/enemy/hachi.png",       price: 40, unlockEnemyImg: "./images/enemy/hachi.png" },
 };
+
+// 属性ショップ(js/attributes.jsのATTR_DATA全属性が対象、基本3属性(fire/thunder/ice)を除く)の価格。
+// 個別に値を分ける複雑さは不要という判断で、全属性一律のこの固定値だけを持たせている。
+export const ATTRIBUTE_SHOP_PRICE = 1000;
